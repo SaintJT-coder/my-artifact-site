@@ -7,5 +7,5 @@ window.APP_CONFIG = {
     messagingSenderId: "893144261549",
     appId: "1:893144261549:web:d3624341a6777ad2963724"
   },
-  adminUid: ""
+  adminUid: "16EApnFozEdyvkumTdJQUTF4ohA3"
 };
