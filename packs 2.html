@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pickslip Packs</title>
+<style>
+:root{--bg:#090A1B;--card:#14172E;--pill:#1C2040;--line:#2A2E4D;--mute:#9AA0C0;--acc:#2F6BFF;--green:#39E26B;--lose:#FF5C6A;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:#fff;font-family:-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100%}
+button{font:inherit;color:inherit}
+.wrap{max-width:460px;margin:0 auto;padding:16px}
+header{display:flex;justify-content:space-between;align-items:baseline}
+h1{margin:0;font-size:22px}
+.bal{color:var(--green);font-weight:800;font-size:24px;text-shadow:0 0 18px rgba(57,226,107,.5)}
+.tag{color:var(--mute);font-size:13px;margin:2px 0 14px}
+.packs{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pk{background:var(--card);border:2px solid var(--line);border-radius:14px;padding:12px 4px;text-align:center}
+.pk .i{font-size:34px}.pk b{display:block;font-size:13px;margin-top:4px}.pk span{color:var(--green);font-weight:800}
+.pk.on{border-color:var(--acc);box-shadow:0 0 0 2px rgba(47,107,255,.35)}
+.view{position:relative;height:132px;margin:16px 0;background:var(--card);border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+.view:after{content:"";position:absolute;left:50%;top:0;bottom:0;width:3px;margin-left:-1.5px;background:var(--acc);box-shadow:0 0 12px var(--acc);z-index:2}
+.strip{display:flex;gap:8px;padding:12px 0;position:absolute;left:0;top:0;will-change:transform}
+.it{flex:none;width:96px;height:108px;border-radius:12px;background:var(--pill);display:flex;flex-direction:column;align-items:center;justify-content:center;border-bottom:4px solid var(--rc)}
+.it i{font-style:normal;font-size:38px}.it small{font-size:11px;color:var(--mute);margin-top:4px;text-align:center;padding:0 4px}.it em{font-style:normal;font-size:12px;font-weight:800;color:var(--rc)}
+.cta{width:100%;border:0;border-radius:14px;background:var(--acc);color:#fff;font-weight:800;font-size:16px;padding:14px}
+.cta:disabled{background:var(--pill);color:var(--mute)}
+.res{text-align:center;min-height:86px;margin:12px 0 4px}
+.res .big{font-size:20px;font-weight:800}.res .v{font-size:30px;font-weight:900;color:var(--rc)}
+details{margin-top:14px;background:var(--card);border-radius:12px;padding:10px 12px}
+summary{color:var(--mute);font-size:14px}
+.o{display:flex;justify-content:space-between;padding:5px 0;font-size:14px;border-bottom:1px solid var(--line)}
+.o:last-child{border:0}.o i{font-style:normal;margin-right:6px}
+.log{margin-top:16px;font-size:14px;color:var(--mute)}.log div{display:flex;justify-content:space-between;padding:4px 0}
+.reset{background:none;border:1px solid var(--line);border-radius:10px;color:var(--mute);padding:8px 12px;margin-top:14px}
+.mute{background:var(--pill);border:0;border-radius:10px;padding:6px 10px;font-size:16px;margin-left:10px}
+#cf{position:fixed;inset:0;pointer-events:none;z-index:50;width:100%;height:100%}
+.it img,.pk img{display:block}.ar{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
+.ar .th{width:40px;height:40px;display:grid;place-items:center;font-size:26px;flex:none}.ar .nm{flex:1}
+.ar button{background:var(--pill);border:0;border-radius:8px;padding:7px 10px;font-size:13px}
+.ah{color:var(--mute);font-size:13px;margin:12px 0 2px;font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Packs</h1><span><span class="bal" id="bal"></span><button class="mute" id="mute" aria-label="Sound">🔊</button></span></header>
+  <p class="tag">Play money. You win the item's value, not the item.</p>
+  <div class="packs" id="packs"></div>
+  <div class="view"><div class="strip" id="strip"></div></div>
+  <button class="cta" id="open"></button>
+  <div class="res" id="res"></div>
+  <canvas id="cf"></canvas>
+  <details id="admd" hidden><summary>Admin: item pictures</summary><p class="tag">Pick a photo to replace an emoji. In the real site only the admin sees this and everyone gets the pictures.</p><div id="admbody"></div></details>
+  <details><summary>Contents and odds</summary><div id="odds"></div></details>
+  <div class="log" id="log"></div>
+</div>
+<script>
+const PACKS=[["Rare",5,"🔷",[["Gym socks","🧦",3,40],["Snack haul","🍫",5,27],["Phone case","📱",12,2.181],["Earbuds","🎧",25,0.969],["Bluetooth speaker","🔊",60,0.267],["AirPods","🎶",180,0.055]]],["Legendary",20,"👑",[["Baseball cap","🧢",12,40],["Hoodie","🧥",30,2.427],["Slides","🩴",45,1.387],["Air Force 1s","👟",120,0.867],["Jordan 4s","👞",300,0.303],["Yeezys","🥿",700,0.052]]],["Insane",50,"🌋",[["USB hub","🔌",20,40],["Smartwatch","⌚",70,3.012],["AirPods Pro","🎧",180,2.085],["Nintendo Switch","🎮",300,1.043],["PS5","🕹️",500,0.579],["iPhone","📱",1100,0.139],["MacBook","💻",1800,0.035]]]];
+const ADMIN_UID="16EApnFozEdyvkumTdJQUTF4ohA3";
+let bal=0,sel=0,busy=false,hist=[],packImages={},admin=false;
+try{const v=JSON.parse(localStorage.getItem("packstest")||"{}");if(Array.isArray(v.hist))hist=v.hist}catch(e){}
+const save=()=>{try{localStorage.setItem("packstest",JSON.stringify({bal,hist}))}catch(e){}};
+const $=id=>document.getElementById(id);
+const r2=n=>Math.round(n*100)/100;
+const money=n=>n>=100?Math.round(n).toLocaleString():n.toFixed(2).replace(/\.00$/,"");
+const rnd=()=>{const u=new Uint32Array(1);crypto.getRandomValues(u);return u[0]/4294967296};
+
+let AC=null,muted=false;try{muted=localStorage.getItem("packsmute")==="1"}catch(e){}
+function ac(){if(!AC){const C=window.AudioContext||window.webkitAudioContext;if(C)AC=new C()}if(AC&&AC.state==="suspended")AC.resume();return AC}
+function beep(f,d,type,v,when,f2){const a=ac();if(!a||muted)return;const t=a.currentTime+(when||0),o=a.createOscillator(),g=a.createGain();o.type=type||"square";o.frequency.setValueAtTime(f,t);if(f2)o.frequency.exponentialRampToValueAtTime(f2,t+d);g.gain.setValueAtTime(v||.05,t);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g);g.connect(a.destination);o.start(t);o.stop(t+d+.02)}
+const sClick=()=>beep(700,.05,"triangle",.07,0,350),sTick=()=>beep(1300+rnd()*300,.03,"square",.025),sWin=big=>[523,659,784,1047].concat(big?[1319,1568]:[]).forEach((f,i)=>beep(f,.2,"triangle",.07,i*.09));
+document.addEventListener("click",e=>{if(e.target.closest("button,summary"))sClick()},true);
+function confetti(n){
+  if(matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+  const c=$("cf"),x=c.getContext("2d");c.width=innerWidth;c.height=innerHeight;
+  const cols=["#2F6BFF","#39E26B","#FFC83D","#FF5C6A","#B26BFF","#ffffff"];
+  const P=Array.from({length:n},()=>({x:innerWidth/2+(rnd()-.5)*80,y:innerHeight*.45,vx:(rnd()-.5)*15,vy:-rnd()*15-4,w:6+rnd()*6,h:4+rnd()*6,r:rnd()*6,vr:(rnd()-.5)*.4,c:cols[Math.floor(rnd()*6)]}));
+  let f=0;(function a(){x.clearRect(0,0,c.width,c.height);P.forEach(p=>{p.vy+=.35;p.x+=p.vx;p.y+=p.vy;p.vx*=.99;p.r+=p.vr;x.save();x.translate(p.x,p.y);x.rotate(p.r);x.fillStyle=p.c;x.globalAlpha=Math.max(0,1-f/150);x.fillRect(-p.w/2,-p.h/2,p.w,p.h);x.restore()});if(++f<150)requestAnimationFrame(a);else x.clearRect(0,0,c.width,c.height)})()}
+const pic=(k,emoji,px)=>packImages[k]?`<img src="${packImages[k]}" alt="" style="width:${px}px;height:${px}px;border-radius:10px;object-fit:cover">`:emoji;
+async function upload(k){
+  if(!admin)return alert("Admin access required.");
+  const f=document.createElement("input");
+  f.type="file";f.accept="image/*";f.setAttribute("capture","environment");
+  f.onchange=async()=>{
+    const file=f.files&&f.files[0];if(!file)return;
+    try{
+      const img=new Image(),u=URL.createObjectURL(file);
+      await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=u});
+      const c=document.createElement("canvas");c.width=c.height=160;
+      const x=c.getContext("2d");x.fillStyle="#1C2040";x.fillRect(0,0,160,160);
+      const s=Math.min(160/img.width,160/img.height);
+      x.drawImage(img,(160-img.width*s)/2,(160-img.height*s)/2,img.width*s,img.height*s);
+      URL.revokeObjectURL(u);
+      const data=c.toDataURL("image/jpeg",.78);
+      if(data.length>900000)throw new Error("Image is too large. Please choose a smaller photo.");
+      await parent.firebase.firestore().doc("packImages/"+k).set({data,contentType:"image/jpeg",updatedAt:parent.firebase.firestore.FieldValue.serverTimestamp(),updatedBy:parent.myId||null},{merge:true});
+      packImages[k]=data;idle();draw();drawAdm();
+    }catch(e){alert("Upload failed: "+(e.message||e.code||e))}
+  };
+  f.click();
+}
+async function removeUpload(k){
+  if(!admin)return;
+  try{
+    await parent.firebase.firestore().doc("packImages/"+k).delete();
+    delete packImages[k];idle();draw();drawAdm();
+  }catch(e){alert("Remove failed: "+(e.message||e.code||e))}
+}
+function drawAdm(){
+  const body=$("admbody");if(!body)return;
+  body.innerHTML=PACKS.map((k,pi)=>`<div class="ah">${k[0]} pack</div>`+
+    [["Pack cover",k[2],"p"+pi]].concat(k[3].map((x,ii)=>[x[0],x[1],pi+"-"+ii])).map(([n,e,key])=>
+      `<div class="ar"><span class="th">${pic(key,e,40)}</span><span class="nm">${n}</span><button type="button" data-u="${key}">Photo</button>${packImages[key]?`<button type="button" data-r="${key}">✕</button>`:""}</div>`
+    ).join("")).join("");
+}
+$("admbody").addEventListener("click",e=>{
+  const u=e.target.closest("[data-u]"),r=e.target.closest("[data-r]");
+  if(u)upload(u.dataset.u);else if(r)removeUpload(r.dataset.r);
+});
+function rc(v,p){const r=v/p;return r<1?"#8A90B0":r<3?"#4C9BFF":r<10?"#B26BFF":"#FFC83D"}
+function pick(items){const W=items.reduce((a,x)=>a+x[3],0);let t=rnd()*W;for(const x of items){t-=x[3];if(t<0)return x}return items[0]}
+function cell(x,pi){const p=PACKS[pi][1];return `<div class="it" style="--rc:${rc(x[2],p)}"><i>${pic(pi+"-"+PACKS[pi][3].indexOf(x),x[1],56)}</i><small>${x[0]}</small><em>$${money(x[2])}</em></div>`}
+function draw(){
+  $("bal").textContent="$ "+bal.toFixed(2);
+  $("packs").innerHTML=PACKS.map((k,i)=>`<button class="pk ${i===sel?"on":""}" data-i="${i}" ${busy?"disabled":""}><div class="i">${pic("p"+i,k[2],44)}</div><b>${k[0]}</b><span>$${k[1]}</span></button>`).join("");
+  document.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>{sel=+b.dataset.i;idle();draw()});
+  const [n,p,,items]=PACKS[sel],W=items.reduce((a,x)=>a+x[3],0),ev=items.reduce((a,x)=>a+x[2]*x[3],0)/W;
+  $("open").textContent=`Open ${n} · $${p}`;$("open").disabled=busy||bal+1e-9<p;
+  $("odds").innerHTML=items.slice().sort((a,b)=>b[2]-a[2]).map(x=>`<div class="o"><span><i>${pic(sel+"-"+items.indexOf(x),x[1],22)}</i>${x[0]}</span><span>$${money(x[2])} · ${(x[3]/W*100).toFixed(2)}%</span></div>`).join("")+`<div class="o"><span>Average return</span><span>${(ev/p*100).toFixed(0)}%</span></div>`;
+  $("log").innerHTML=hist.map(h=>`<div><span>${h.i} ${h.n}</span><span style="color:${h.a>=0?"var(--green)":"var(--lose)"}">${h.a>=0?"+":"-"}$${money(Math.abs(h.a))}</span></div>`).join("");
+}
+function idle(){const p=PACKS[sel][1],it=PACKS[sel][3],s=$("strip");s.style.transition="none";s.style.transform="translateX(0)";s.innerHTML=Array.from({length:12},()=>cell(pick(it),sel)).join("")}
+function open(){
+  if(busy)return;const [n,p,,items]=PACKS[sel];if(bal+1e-9<p)return;
+  busy=true;bal=r2(bal-p);const w=pick(items);bal=r2(bal+w[2]);send(r2(w[2]-p));
+  hist.unshift({i:w[1],n:w[0],a:r2(w[2]-p)});hist=hist.slice(0,8);save();
+  const IDX=40,list=Array.from({length:48},(_,i)=>i===IDX?w:pick(items));
+  const s=$("strip");s.style.transition="none";s.style.transform="translateX(0)";s.innerHTML=list.map(x=>cell(x,sel)).join("");
+  $("res").innerHTML="";$("open").disabled=true;
+  const shown=r2(bal-w[2]+p);$("bal").textContent="$ "+shown.toFixed(2);
+  const vw=s.parentElement.clientWidth,target=IDX*104+48-vw/2+(rnd()-.5)*60;
+  const t0=performance.now();let last=-1,lt=0;void s.offsetWidth;s.style.transition="transform 5s cubic-bezier(.12,.6,.1,1)";s.style.transform=`translateX(${-target}px)`;
+  (function f(){const m=new DOMMatrix(getComputedStyle(s).transform),i=Math.floor((-m.m41+vw/2)/104),now=performance.now();if(i!==last&&now-lt>35){last=i;lt=now;sTick()}if(now-t0<5100)requestAnimationFrame(f)})();
+  setTimeout(()=>{
+    busy=false;const c=rc(w[2],p),diff=r2(w[2]-p);
+    $("res").style.setProperty("--rc",c);
+    $("res").innerHTML=`<div style="font-size:44px">${pic(sel+"-"+items.indexOf(w),w[1],96)}</div><div class="big">${w[0]}</div><div class="v">+$${money(w[2])}</div><div style="color:${diff>=0?"var(--green)":"var(--lose)"};font-weight:700">${diff>=0?"Profit":"Loss"} $${money(Math.abs(diff))}</div>`;
+    draw();
+    if(w[2]>p){confetti(Math.min(260,90+Math.round(w[2]/p*8)));sWin(w[2]/p>=3)}
+  },5200);
+  draw();
+}
+$("open").onclick=open;
+$("mute").textContent=muted?"🔇":"🔊";
+$("mute").onclick=()=>{muted=!muted;try{localStorage.setItem("packsmute",muted?"1":"0")}catch(e){}$("mute").textContent=muted?"🔇":"🔊";if(!muted)sClick()};
+const send=a=>parent.postMessage({t:"delta",a},location.origin);
+addEventListener("message",e=>{if(e.origin!==location.origin||e.source!==parent)return;const d=e.data||{};if(d.t!=="bal")return;if(d.admin){admin=true;if($("admd")){ $("admd").hidden=false; $("admd").open=true; } drawAdm();}if(busy)return;bal=r2(d.b);draw();});
+parent.postMessage({t:"ready"},location.origin);
+parent.postMessage({t:"packImagesReady"},location.origin);
+addEventListener("message",async e=>{if(e.origin!==location.origin||e.source!==parent)return;const d=e.data||{};if(d.t!=="packImages")return;packImages=d.images||{};idle();draw();if(admin)drawAdm()});
+idle();draw();
+</script>
+</body>
+</html>
