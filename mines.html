@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pickslip Mines</title>
+<style>
+:root{--bg:#090A1B;--card:#14172E;--pill:#1C2040;--line:#2A2E4D;--mute:#9AA0C0;--acc:#2F6BFF;--green:#39E26B;--lose:#FF5C6A;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px);height:100%}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--bg);color:#fff;font-family:-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100%}
+button,input,select{font:inherit;color:inherit}
+.wrap{max-width:460px;margin:0 auto;padding:16px}
+header{display:flex;justify-content:space-between;align-items:baseline}
+h1{margin:0;font-size:22px}
+.bal{color:var(--green);font-weight:800;font-size:24px;text-shadow:0 0 18px rgba(57,226,107,.5)}
+.tag{color:var(--mute);font-size:13px;margin:2px 0 0}
+.grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:16px 0}
+.c{aspect-ratio:1;border:0;border-radius:12px;background:var(--pill);font-size:28px;display:grid;place-items:center;transition:transform .1s}
+.c:not(:disabled):active{transform:scale(.94)}
+.c.gem{background:#12351f;box-shadow:inset 0 0 0 2px var(--green)}
+.c.mine{background:#3a1520}.c.hit{box-shadow:inset 0 0 0 2px var(--lose)}.c.dim{opacity:.4}
+label small,.note{color:var(--mute);display:block;margin:10px 0 4px;font-size:13px}
+input,select{width:100%;background:var(--pill);border:1px solid var(--line);border-radius:12px;padding:12px;font-size:16px}
+.row{display:flex;gap:8px;margin:8px 0}.row>*{flex:1}
+.row button{background:var(--pill);border:0;border-radius:10px;padding:10px;font-weight:700}
+.cta{width:100%;border:0;border-radius:14px;background:var(--acc);color:#fff;font-weight:800;font-size:16px;padding:14px;margin-top:12px}
+.cta:disabled{background:var(--pill);color:var(--mute)}
+.res{text-align:center;font-weight:800;font-size:20px;margin:6px 0}
+.log{margin-top:18px;border-top:1px solid var(--line);padding-top:10px;font-size:14px;color:var(--mute)}
+.log div{display:flex;justify-content:space-between;padding:4px 0}
+.reset{background:none;border:1px solid var(--line);border-radius:10px;color:var(--mute);padding:8px 12px;margin-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>Mines</h1><span class="bal" id="bal"></span></header>
+  <p class="tag">Play money. Results count toward your balance.</p>
+  <div class="grid" id="grid"></div>
+  <div id="ctl"></div>
+  <div class="log" id="log"></div>
+</div>
+<script>
+const N=25;let bal=0,bet=1,mines=3,g=null,hist=[];
+try{const v=JSON.parse(localStorage.getItem("minestest")||"{}");if(Array.isArray(v.hist))hist=v.hist}catch(e){}
+const save=()=>{try{localStorage.setItem("minestest",JSON.stringify({bal,hist}))}catch(e){}};
+const $=id=>document.getElementById(id);
+const money=n=>n.toFixed(2).replace(/\.00$/,"").replace(/(\.\d)0$/,"$1");
+const mult=(k,m)=>{let x=.99;for(let i=0;i<k;i++)x*=(N-i)/(N-m-i);return x};
+const r2=n=>Math.round(n*100)/100;
+function start(){
+  const b=r2(bet);
+  if(!(b>=.1)||b>bal+1e-9){alert("Enter a bet between $0.10 and your balance.");return}
+  bal=r2(bal-b);send(-b);
+  const set=new Set(),u=new Uint32Array(1);
+  while(set.size<mines){crypto.getRandomValues(u);set.add(u[0]%N)}
+  g={bet:b,m:mines,mines:set,open:new Set(),state:"play"};save();draw();
+}
+function pick(i){
+  if(!g||g.state!=="play"||g.open.has(i))return;
+  if(g.mines.has(i)){g.state="bust";g.hit=i;hist.unshift({t:"Lost",a:-g.bet,x:g.open.size});hist=hist.slice(0,8);save();draw();return}
+  g.open.add(i);
+  if(g.open.size===N-g.m)return cash();
+  draw();
+}
+function cash(){
+  if(!g||g.state!=="play"||!g.open.size)return;
+  const pay=Math.floor(g.bet*mult(g.open.size,g.m)*100)/100;
+  g.state="won";g.pay=pay;bal=r2(bal+pay);send(pay);
+  hist.unshift({t:"Won",a:r2(pay-g.bet),x:g.open.size});hist=hist.slice(0,8);save();draw();
+}
+function draw(){
+  const play=g&&g.state==="play",k=g?g.open.size:0,m=g?g.m:mines;
+  const cur=g?mult(k,m):1,nxt=mult(k+1,m);
+  $("bal").textContent="$ "+bal.toFixed(2);
+  let cells="";
+  for(let i=0;i<N;i++){
+    let c="c",t="";
+    if(g){
+      if(g.open.has(i)){c+=" gem";t="💎"}
+      else if(g.state!=="play"){const mi=g.mines.has(i);c+=mi?" mine":" dim";t=mi?"💣":"💎";if(g.hit===i)c+=" hit"}
+    }
+    cells+=`<button class="${c}" data-i="${i}" ${play?"":"disabled"} aria-label="Tile ${i+1}">${t}</button>`;
+  }
+  $("grid").innerHTML=cells;
+  const res=g&&g.state==="bust"?`<div class="res" style="color:var(--lose)">Boom! Lost $${money(g.bet)}</div>`
+    :g&&g.state==="won"?`<div class="res" style="color:var(--green)">Cashed out $${money(g.pay)} (${mult(k,m).toFixed(2)}×)</div>`:"";
+  $("ctl").innerHTML=play
+    ?`<button class="cta" id="cash" ${k?"":"disabled"}>Cashout $${money(Math.floor(g.bet*cur*100)/100)}</button>
+      <p class="note">${k} gem${k===1?"":"s"} · ${m} mine${m===1?"":"s"} · now ${cur.toFixed(2)}× · next ${nxt.toFixed(2)}×</p>`
+    :`${res}<label><small>Bet amount</small><input id="bet" type="number" inputmode="decimal" min="0.1" step="0.1" value="${bet}"></label>
+      <div class="row"><button id="half">½</button><button id="dbl">2×</button><button id="max">Max</button></div>
+      <label><small>Mines</small><select id="mn">${Array.from({length:24},(_,i)=>`<option ${i+1===mines?"selected":""}>${i+1}</option>`).join("")}</select></label>
+      <button class="cta" id="go">Bet</button>
+      <p class="note">First gem pays ${mult(1,mines).toFixed(2)}×. Edge: 1%.</p>`;
+  $("log").innerHTML=hist.length?hist.map(h=>`<div><span>${h.t} · ${h.x} gem${h.x===1?"":"s"}</span><span style="color:${h.a>=0?"var(--green)":"var(--lose)"}">${h.a>=0?"+":"-"}$${money(Math.abs(h.a))}</span></div>`).join(""):"";
+  document.querySelectorAll("[data-i]").forEach(b=>b.onclick=()=>pick(+b.dataset.i));
+  const on=(id,f)=>{const e=$(id);if(e)e.onclick=f};
+  on("cash",cash);on("go",start);
+  on("half",()=>{bet=Math.max(.1,r2(bet/2));draw()});
+  on("dbl",()=>{bet=Math.min(bal,r2(bet*2));draw()});
+  on("max",()=>{bet=Math.floor(bal*100)/100;draw()});
+  const bi=$("bet");if(bi)bi.oninput=()=>{bet=parseFloat(bi.value)||0};
+  const ms=$("mn");if(ms)ms.onchange=()=>{mines=+ms.value;draw()};
+}
+const send=a=>parent.postMessage({t:"delta",a},location.origin);
+addEventListener("message",e=>{if(e.origin!==location.origin||e.source!==parent)return;const d=e.data||{};if(d.t!=="bal")return;if(d.admin&&$("admd"))$("admd").hidden=false;if(g&&g.state==="play")return;bal=r2(d.b);draw()});
+parent.postMessage({t:"ready"},location.origin);
+draw();
+</script>
+</body>
+</html>
