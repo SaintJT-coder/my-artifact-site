@@ -295,9 +295,15 @@ function copySlip(e){
 function gnav(){return `<div class="pills">${[["spin","Daily Spin"],["packs","Packs"],["mines","Mines"]].map(([k,l])=>`<button class="pill ${gsub===k?"on":""}" data-gm="${k}">${l}</button>`).join("")}</div>`}
 function gamePage(){const f=$("gframe");if(f&&f.dataset.g===gsub){postBal();return}
   $("main").innerHTML=gnav()+`<iframe id="gframe" data-g="${gsub}" src="${gsub}.html" title="${gsub}" style="width:100%;height:calc(100dvh - 230px);min-height:560px;border:0;display:block"></iframe>`}
+let packImgs={};
+function postPackImages(){const f=$("gframe");if(f&&f.contentWindow)f.contentWindow.postMessage({t:"packImages",images:packImgs},location.origin)}
 function postBal(){const f=$("gframe");if(f&&f.contentWindow)f.contentWindow.postMessage({t:"bal",b:balance(),admin},location.origin)}
 addEventListener("message",e=>{if(e.origin!==location.origin)return;const f=$("gframe");if(!f||e.source!==f.contentWindow)return;const d=e.data||{};
   if(d.t==="ready")postBal();
+  else if(d.t==="packImagesReady")postPackImages();
+  else if(d.t==="setPackImage"&&admin&&db&&typeof d.k==="string"&&/^[p\d-]+$/.test(d.k)){
+    const v=d.url;if(v!==null&&(typeof v!=="string"||!v.startsWith("data:image/jpeg")||v.length>40000))return;
+    db.doc("settings/packimages").set({images:{[d.k]:v===null?firebase.firestore.FieldValue.delete():v}},{merge:true}).catch(err=>alert("Couldn't save picture: "+(err.message||err.code)))}
   else if(d.t==="delta"&&db&&myId&&typeof d.a==="number"&&isFinite(d.a)&&Math.abs(d.a)<=5000)db.doc("games/"+myId).set({total:firebase.firestore.FieldValue.increment(d.a)},{merge:true}).catch(err=>alert("Couldn't save: "+(err.message||err.code)))});
 document.addEventListener("click",e=>{const b=e.target.closest("[data-gm]");if(b){gsub=b.dataset.gm;render()}});
 function spinPage(){
@@ -539,6 +545,7 @@ document.addEventListener("click",e=>{
     if(myId)db.doc("games/"+myId).onSnapshot(s=>{gm=s.exists?s.data():{};gm.total=gm.total||0;render()},()=>{});
     db.doc("settings/payouts").onSnapshot(s=>{payouts=s.exists?{...DEF,...s.data()}:{...DEF};render()},()=>{});
     db.doc("settings/teamcolors").onSnapshot(s=>{tcolors={};((s.exists&&s.data().list)||[]).forEach(x=>{const k=x.lastIndexOf("|");if(k>0)tcolors[x.slice(0,k)]=x.slice(k+1)});render()},()=>{});
+    db.doc("settings/packimages").onSnapshot(s=>{packImgs=(s.exists&&s.data().images)||{};postPackImages()},()=>{});
     db.doc("settings/vbteams").onSnapshot(s=>{vbTeams=(s.exists&&s.data().list)||[];render()},()=>{});
     if(myId)db.doc("spins/"+myId).onSnapshot(s=>{spin=s.exists?s.data():{};spin.total=spin.total||0;render()},()=>{});
     if(myId)db.doc("slips/"+myId).onSnapshot(s=>{const x=s.exists?s.data():null;entries=(x&&x.entries)||[];render()},()=>{});

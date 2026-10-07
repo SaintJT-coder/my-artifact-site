@@ -78,33 +78,26 @@ function confetti(n){
   const P=Array.from({length:n},()=>({x:innerWidth/2+(rnd()-.5)*80,y:innerHeight*.45,vx:(rnd()-.5)*15,vy:-rnd()*15-4,w:6+rnd()*6,h:4+rnd()*6,r:rnd()*6,vr:(rnd()-.5)*.4,c:cols[Math.floor(rnd()*6)]}));
   let f=0;(function a(){x.clearRect(0,0,c.width,c.height);P.forEach(p=>{p.vy+=.35;p.x+=p.vx;p.y+=p.vy;p.vx*=.99;p.r+=p.vr;x.save();x.translate(p.x,p.y);x.rotate(p.r);x.fillStyle=p.c;x.globalAlpha=Math.max(0,1-f/150);x.fillRect(-p.w/2,-p.h/2,p.w,p.h);x.restore()});if(++f<150)requestAnimationFrame(a);else x.clearRect(0,0,c.width,c.height)})()}
 const pic=(k,emoji,px)=>packImages[k]?`<img src="${packImages[k]}" alt="" style="width:${px}px;height:${px}px;border-radius:10px;object-fit:cover">`:emoji;
-async function upload(k){
-  if(!window.parent||!admin)return alert("Admin access required.");
-  const f=document.createElement("input");f.type="file";f.accept="image/*";f.onchange=async()=>{
-    const file=f.files&&f.files[0];if(!file)return;
+function sendImg(k,url){parent.postMessage({t:"setPackImage",k,url},location.origin)}
+function upload(k){
+  if(!admin)return alert("Admin access required.");
+  const f=document.createElement("input");f.type="file";f.accept="image/*";f.style.display="none";
+  document.body.appendChild(f);
+  f.onchange=async()=>{
+    const file=f.files&&f.files[0];f.remove();if(!file)return;
     try{
-      const img=new Image(),u=URL.createObjectURL(file);
-      await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=reject;img.src=u});
-      const c=document.createElement("canvas");c.width=c.height=128;const x=c.getContext("2d");x.fillStyle="#1C2040";x.fillRect(0,0,128,128);
-      const s=Math.min(128/img.width,128/img.height);x.drawImage(img,(128-img.width*s)/2,(128-img.height*s)/2,img.width*s,img.height*s);URL.revokeObjectURL(u);
-      const blob=await new Promise(resolve=>c.toBlob(resolve,"image/jpeg",.82));
-      if(!blob)throw new Error("Could not process image.");
-      const path="pack-images/"+k+".jpg";
-      const ref=parent.firebase.storage().ref(path);
-      await ref.put(blob,{contentType:"image/jpeg",cacheControl:"public,max-age=3600"});
-      const url=await ref.getDownloadURL();
-      await parent.firebase.firestore().doc("packImages/"+k).set({url,storagePath:path,updatedAt:parent.firebase.firestore.FieldValue.serverTimestamp(),updatedBy:parent.myId||null},{merge:true});
-      packImages[k]=url;idle();draw();drawAdm();
-    }catch(e){alert("Upload failed: "+(e.message||e.code||e))}
-  };f.click();
+      const u=URL.createObjectURL(file),img=new Image();
+      await new Promise((res,rej)=>{img.onload=res;img.onerror=()=>rej(new Error("Couldn't read that image"));img.src=u});
+      const S=112,c=document.createElement("canvas");c.width=c.height=S;const x=c.getContext("2d");
+      const m=Math.min(img.width,img.height),sx=(img.width-m)/2,sy=(img.height-m)/2;
+      x.drawImage(img,sx,sy,m,m,0,0,S,S);URL.revokeObjectURL(u);
+      const url=c.toDataURL("image/jpeg",.75);
+      packImages[k]=url;idle();draw();drawAdm();sendImg(k,url);
+    }catch(e){alert("Upload failed: "+(e.message||e))}
+  };
+  f.click();
 }
-async function removeUpload(k){
-  if(!admin)return;
-  try{
-    const path="pack-images/"+k+".jpg";try{await parent.firebase.storage().ref(path).delete()}catch(e){}
-    await parent.firebase.firestore().doc("packImages/"+k).delete();delete packImages[k];idle();draw();drawAdm();
-  }catch(e){alert("Remove failed: "+(e.message||e.code||e))}
-}
+function removeUpload(k){if(!admin)return;delete packImages[k];idle();draw();drawAdm();sendImg(k,null)}
 function drawAdm(){$("admbody").innerHTML=PACKS.map((k,pi)=>`<div class="ah">${k[0]} pack</div>`+[["Pack cover",k[2],"p"+pi]].concat(k[3].map((x,ii)=>[x[0],x[1],pi+"-"+ii])).map(([n,e,key])=>`<div class="ar"><span class="th">${pic(key,e,40)}</span><span class="nm">${n}</span><button data-u="${key}">Photo</button>${packImages[key]?`<button data-r="${key}">✕</button>`:""}</div>`).join("")).join("");
   document.querySelectorAll("[data-u]").forEach(b=>b.onclick=()=>upload(b.dataset.u));
   document.querySelectorAll("[data-r]").forEach(b=>b.onclick=()=>removeUpload(b.dataset.r))}
