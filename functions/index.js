@@ -36,8 +36,9 @@ exports.importNflOdds = onRequest({region:"us-central1",secrets:[oddsKey],timeou
     let written = 0;
     for (const event of upcoming) {
       const odds = await getJSON("/sports/americanfootball_nfl/events/"+encodeURIComponent(event.id)+"/odds?regions=us&markets="+MARKETS.join(",")+"&oddsFormat=american",key);
-      const batch = admin.firestore().batch();
+      let batch = admin.firestore().batch();
       let count = 0;
+      let pending = 0;
       for (const book of odds.bookmakers || []) for (const market of book.markets || []) {
         if (!MARKETS.includes(market.key)) continue;
         for (const outcome of market.outcomes || []) {
@@ -45,10 +46,11 @@ exports.importNflOdds = onRequest({region:"us-central1",secrets:[oddsKey],timeou
           const id = [event.id,book.key,market.key,outcome.description,outcome.name].join("|");
           const doc = admin.firestore().collection("oddsApiNflProps").doc(require("crypto").createHash("sha256").update(id).digest("hex"));
           batch.set(doc,{eventId:clean(event.id),homeTeam:clean(event.home_team),awayTeam:clean(event.away_team),commenceTime:event.commence_time,bookmaker:clean(book.key),market:market.key,player:clean(outcome.description),side:outcome.name,line:Number(outcome.point),americanOdds:Number(outcome.price),updatedAt:admin.firestore.FieldValue.serverTimestamp(),source:"the-odds-api"},{merge:true});
-          count++; written++;
+          count++; written++; pending++;
+          if (pending === 400) { await batch.commit(); batch = admin.firestore().batch(); pending = 0; }
         }
       }
-      if (count) await batch.commit();
+      if (pending) await batch.commit();
     }
     return res.json({ok:true,events:upcoming.length,props:written});
   } catch(e) {
