@@ -526,7 +526,7 @@ function nflParse(txt){
   return {rows,errs};
 }
 function nflEditor(){
-  $("panel").innerHTML=`<h2>Import NFL props</h2><p class="note" style="padding:0 0 8px;text-align:left">One prop per line: week, name, team, position, opponent, stat, sportsbook line, last 5 results (slash-separated, oldest first). Rushing and receiving yards get +5 added to the sportsbook line automatically. Limits: 20 RB, 30 WR, 30 QB. Re-importing a week/player/stat updates its line and keeps its status and score.</p><textarea id="f-nfl" rows="9" placeholder="6,Player Name,DEN,RB,vs SEA,Rushing Yards,62.5,71/55/88/64/90" style="font:12px monospace"></textarea><div class="err" id="f-e"></div><button class="cta" id="nflgo">Import</button>`;
+  $("panel").innerHTML=`<h2>Import NFL props</h2><p class="note" style="padding:0 0 8px;text-align:left">One prop per line: week, name, team, position, opponent, stat, sportsbook line, last 5 results (slash-separated, oldest first). Rushing and receiving yards get +5 added to the sportsbook line automatically. Limits: 20 RB, 30 WR, 30 QB. Re-importing a week/player/stat updates its line and keeps its status and score.</p><button class="cta" id="nflfetch" style="margin-bottom:12px">Fetch Latest NFL Odds</button><div class="note" id="nflfetchstatus" role="status">Imports odds into Firestore. Manual entry remains available below.</div><textarea id="f-nfl" rows="9" placeholder="6,Player Name,DEN,RB,vs SEA,Rushing Yards,62.5,71/55/88/64/90" style="font:12px monospace"></textarea><div class="err" id="f-e"></div><button class="cta" id="nflgo">Import</button>`;
   $("sheet").classList.add("open");
 }
 function oddsEditor(){
@@ -647,6 +647,32 @@ document.addEventListener("click",e=>{
     const u=$("gr-u").value,n=parseInt($("gr-n").value)||0;if(!u||n<1)return;
     const gr={...(promo.grants||{})};gr[u]=(gr[u]||0)+n;
     write(async()=>{await db.doc("settings/promos").set({...promo,grants:gr});toast("Gave "+n+" free entr"+(n>1?"ies":"y"))});
+  }
+  else if(id==="nflfetch"){ (async()=>{
+    if(!admin)return;
+    const btn=$("nflfetch"),msg=$("nflfetchstatus");
+    btn.disabled=true;
+    btn.textContent="Importing...";
+    msg.textContent="Fetching NFL odds. Please wait...";
+    try{
+      const user=firebase.auth().currentUser;
+      if(!user)throw new Error("Please sign in again.");
+      const token=await user.getIdToken(true);
+      const res=await fetch("https://us-central1-pickslip-4e265.cloudfunctions.net/importNflOdds",{
+        method:"POST",
+        headers:{"Authorization":"Bearer "+token}
+      });
+      const data=await res.json();
+      if(!res.ok||!data.ok)throw new Error(data.error||"Import failed (HTTP "+res.status+")");
+      msg.textContent="Success! "+data.props+" props from "+data.events+" games imported.";
+      toast("NFL odds imported successfully");
+    }catch(err){
+      msg.textContent="Import failed: "+err.message;
+    }finally{
+      btn.disabled=false;
+      btn.textContent="Fetch Latest NFL Odds";
+    }
+    })();
   }
   else if(id==="nflgo"){
     const {rows,errs}=nflParse($("f-nfl").value);
