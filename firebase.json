@@ -2,5 +2,13 @@
   "functions": {
     "source": "functions",
     "runtime": "nodejs22"
+  },
+  "hosting": {
+    "public": "preview-site",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
   }
 }
