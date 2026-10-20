@@ -344,3 +344,70 @@ async function scheduledNflPush(kind){
 }
 exports.sundayNflReminder=onSchedule({schedule:"30 9 * * 0",timeZone:"America/Los_Angeles",region:"us-central1",secrets:[oddsKey],timeoutSeconds:540},async()=>scheduledNflPush("sunday"));
 exports.mondayNflReminder=onSchedule({schedule:"0 16 * * 1",timeZone:"America/Los_Angeles",region:"us-central1",secrets:[oddsKey],timeoutSeconds:540},async()=>scheduledNflPush("monday"));
+
+const {onDocumentUpdated}=require("firebase-functions/v2/firestore");
+const WIN_PAY={p2:3,p3:5,p4:10,p5:20,p6:37.5,f3_3:2.25,f3_2:1.25,f4_4:5,f4_3:1.5,f5_5:10,f5_4:2,f6_6:25,f6_5:2,f6_4:0.4};
+function slipOutcome(e,playerData){
+ if(!Array.isArray(e.picks)||!e.picks.length||!Number.isFinite(Number(e.amt)))return null;
+ const states=e.picks.map(p=>{
+  const pl=playerData[p.pid];
+  if(!pl)return "void";
+  if(pl.spoiled&&p.promo==="taco")return "push";
+  if(p.side)return pl.status==="final"&&pl.result?(pl.result==="void"?"push":pl.result===p.side?"hit":"miss"):"open";
+  if(pl.status!=="final"||pl.current==null)return "open";
+  const actual=Number(pl.current),line=Number(p.line);
+  if(!Number.isFinite(actual)||!Number.isFinite(line))return "open";
+  return actual===line?"push":((p.dir==="more"?actual>line:actual<line)?"hit":"miss");
+ });
+ if(states.includes("open"))return null;
+ const active=e.picks.filter((p,i)=>states[i]==="hit"||states[i]==="miss");
+ const hits=states.filter(x=>x==="hit").length,n=active.length,amt=Number(e.amt);
+ let won;
+ if(e.type==="team")won=n===0?amt:hits<n?0:amt*active.reduce((m,p)=>m*Number(p.mult),1);
+ else if(n<2)won=amt;
+ else{
+  const pay=e.pay||WIN_PAY,base=e.mode==="power"||n<3?(hits===n?Number(pay["p"+n]||0):0):Number(pay["f"+n+"_"+hits]||0);
+  won=base>0?amt*base*Number(e.pmul||1)*Number(e.bst||1):0;
+ }
+ if(e.prot&&won===0)won=amt;
+ return Number.isFinite(won)?Math.max(0,won-amt):null;
+}
+exports.notifyWinningSlips=onDocumentUpdated({document:"players/{playerId}",region:"us-central1",timeoutSeconds:540,memory:"512MiB"},async event=>{
+ const before=event.data?.before?.data(),after=event.data?.after?.data();
+ if(!before||!after||JSON.stringify(before)===JSON.stringify(after))return;
+ const db=admin.firestore(),changedId=event.params.playerId;
+ const allPlayers=await db.collection("players").get();
+ const playerData={};allPlayers.forEach(doc=>playerData[doc.id]=doc.data());
+ playerData[changedId]=after;
+ const oldData={...playerData,[changedId]:before};
+ let last=null,notified=0;
+ while(true){
+  let query=db.collection("slips").orderBy(admin.firestore.FieldPath.documentId()).limit(100);
+  if(last)query=query.startAfter(last);
+  const page=await query.get();
+  if(page.empty)break;
+  for(const userDoc of page.docs){
+   const entries=userDoc.data().entries;
+   if(!Array.isArray(entries))continue;
+   for(const entry of entries){
+    if(!entry?.id||!entry.picks?.some(p=>p.pid===changedId))continue;
+    const profit=slipOutcome(entry,playerData),previous=slipOutcome(entry,oldData);
+    if(!(profit>0)||previous!==null&&previous>0)continue;
+    const eventId=hash(userDoc.id+":"+entry.id);
+    const sentRef=db.collection("pushWinNotifications").doc(eventId);
+    try{await sentRef.create({uid:userDoc.id,slipId:entry.id,profit,createdAt:admin.firestore.FieldValue.serverTimestamp()})}
+    catch(e){if(e.code===6||e.code==="already-exists")continue;throw e}
+    const devices=await db.collection("pushDevices").where("uid","==",userDoc.id).where("enabled","==",true).limit(10).get();
+    if(devices.empty)continue;
+    const amount=profit.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+    const messages=devices.docs.map(d=>({token:d.data().token,notification:{title:"You won on PickSlip! 💰",body:"Congrats on the big win! You just won $"+amount+" 💰 Keep your winning streak going! Place a pick now!"},webpush:{fcmOptions:{link:"https://saintjt-coder.github.io/my-artifact-site/preview/"}}}));
+    const result=await admin.messaging().sendEach(messages);
+    notified+=result.successCount;
+    await Promise.all(result.responses.map((v,i)=>!v.success&&["messaging/registration-token-not-registered","messaging/invalid-registration-token"].includes(v.error?.code)?devices.docs[i].ref.delete():Promise.resolve()));
+   }
+  }
+  last=page.docs[page.docs.length-1];
+  if(page.size<100)break;
+ }
+ console.log("Winning slip notification results",{playerId:changedId,notified});
+});
