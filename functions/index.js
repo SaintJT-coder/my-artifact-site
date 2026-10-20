@@ -257,3 +257,24 @@ exports.importCfbOdds=onRequest({region:"us-central1",secrets:[oddsKey],timeoutS
   res.json({ok:true,games,created,quotes,pollDate:CFB_POLL_DATE,rankedTeams:CFB_TOP30.length});
  }catch(e){console.error("CFB odds import failed",e);res.status(502).json({error:"CFB import failed; verify API key coverage and Cloud Functions logs"})}
 });
+
+const {onRequest: pushRequest}=require("firebase-functions/v2/https");
+exports.registerPushDevice=pushRequest({region:"us-central1",cors:["https://saintjt-coder.github.io"],maxInstances:2},async(req,res)=>{
+ if(req.method!=="POST")return res.status(405).json({error:"POST required"});
+ const match=/^Bearer (.+)$/.exec(req.get("Authorization")||"");
+ if(!match)return res.status(401).json({error:"Authentication required"});
+ let user;try{user=await admin.auth().verifyIdToken(match[1],true)}catch{return res.status(401).json({error:"Invalid token"})}
+ const token=req.body?.token,enabled=req.body?.enabled;
+ if(typeof token!=="string"||token.length<40||token.length>4096||typeof enabled!=="boolean")return res.status(400).json({error:"Invalid device registration"});
+ const id=hash(token);
+ const ref=admin.firestore().collection("pushDevices").doc(id);
+ if(enabled){
+  const previous=await ref.get();
+  if(previous.exists&&previous.data().uid!==user.uid)return res.status(409).json({error:"Device registered to another account"});
+  await ref.set({uid:user.uid,token,enabled:true,platform:"ios-web",updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+ }else{
+  const previous=await ref.get();
+  if(previous.exists&&previous.data().uid===user.uid)await ref.delete();
+ }
+ return res.json({ok:true});
+});
