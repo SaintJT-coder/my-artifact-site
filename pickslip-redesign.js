@@ -136,3 +136,16 @@ function rdShowDetail(id,stat){
  $("sheet").classList.add("open");rdApplyPhotos();
 }
 document.addEventListener("change",e=>{if(e.target.id==="rd-week"){wf=e.target.value;render()}else if(e.target.id==="rd-stat"){sf=e.target.value;render()}});
+
+board=redesignedBoard;
+const rdOriginalFillCards=fillCards;
+fillCards=function(){return bsub==="teams"?rdOriginalFillCards():redesignedFillCards()};
+document.addEventListener("click",e=>{
+ const t=e.target.closest("button");if(!t)return;
+ if(t.dataset.rddetail){e.stopImmediatePropagation();rdShowDetail(t.dataset.rddetail);return}
+ if(t.dataset.rdstat){e.stopImmediatePropagation();if(rdDetailId)rdShowDetail(rdDetailId,t.dataset.rdstat);return}
+ if(t.dataset.promobox){e.stopImmediatePropagation();rdShowPromos();return}
+ if(t.dataset.closepanel){e.stopImmediatePropagation();$("sheet").classList.remove("open");return}
+ if(t.dataset.optpromo){e.stopImmediatePropagation();rdOptIn=!rdOptIn;window.pickslipPromoOptIn=rdOptIn;try{localStorage.setItem("pickslip-promos-optin",rdOptIn?"yes":"no")}catch(err){}rdShowPromos();return}
+ if(t.dataset.rdreset){e.stopImmediatePropagation();wf="All";sf="All";render()}
+},true);
