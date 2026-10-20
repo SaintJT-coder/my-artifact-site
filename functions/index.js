@@ -278,3 +278,24 @@ exports.registerPushDevice=pushRequest({region:"us-central1",cors:["https://sain
  }
  return res.json({ok:true});
 });
+
+exports.sendTestPush=pushRequest({region:"us-central1",cors:["https://saintjt-coder.github.io"],maxInstances:2},async(req,res)=>{
+ if(req.method!=="POST")return res.status(405).json({error:"POST required"});
+ const match=/^Bearer (.+)$/.exec(req.get("Authorization")||"");
+ if(!match)return res.status(401).json({error:"Authentication required"});
+ let user;try{user=await admin.auth().verifyIdToken(match[1],true)}catch{return res.status(401).json({error:"Invalid token"})}
+ const docs=await admin.firestore().collection("pushDevices").where("uid","==",user.uid).where("enabled","==",true).limit(10).get();
+ if(docs.empty)return res.status(404).json({error:"No enabled devices found"});
+ const results=await Promise.all(docs.docs.map(async doc=>{
+  try{
+   await admin.messaging().send({token:doc.data().token,notification:{title:"PickSlip test notification 🔔",body:"Your iPhone is ready for PickSlip alerts!"},webpush:{notification:{icon:"https://saintjt-coder.github.io/my-artifact-site/preview/icon-192.png"},fcmOptions:{link:"https://saintjt-coder.github.io/my-artifact-site/preview/"}}});
+   return true;
+  }catch(e){
+   console.error("Test push failed",e.code||e.message);
+   if(["messaging/registration-token-not-registered","messaging/invalid-registration-token"].includes(e.code))await doc.ref.delete();
+   return false;
+  }
+ }));
+ const sent=results.filter(Boolean).length;
+ return res.status(sent?200:502).json({ok:sent>0,sent,attempted:results.length});
+});
