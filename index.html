@@ -502,7 +502,7 @@ function slip(){
 
 const isVB=g=>/vball|volleyball/i.test(g||"");
 const gl=g=>isVB(g)?`<span class="vb">🏐 ${esc(g)}</span>`:esc(g);
-const GAMES=["CCC VBall","NFL","MLB","NBA","CCC BBall","CCC Soccer"];
+const GAMES=["CCC VBall","NFL","CFB","MLB","NBA","CCC BBall","CCC Soccer"];
 const gameSel=v=>`<label for="f-g">Game</label><select id="f-g">${(GAMES.includes(v)||!v?GAMES:[v,...GAMES]).map(g=>`<option value="${esc(g)}" ${g===(v||GAMES[0])?"selected":""}>${isVB(g)?"🏐 ":""}${esc(g)}</option>`).join("")}</select>`;
 const field=(id,l,v,extra="")=>`<label for="${id}">${l}</label><input id="${id}" autocomplete="off" value="${esc(v)}" ${extra}>`;
 const statusSel=v=>`<label for="f-s">Status</label><select id="f-s">${["upcoming","live","final"].map(s=>`<option ${v===s?"selected":""}>${s}</option>`).join("")}</select>`;
