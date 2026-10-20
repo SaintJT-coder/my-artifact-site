@@ -101,3 +101,77 @@ exports.importNflOdds = onRequest({region:"us-central1",secrets:[oddsKey],timeou
     return res.status(502).json({error:"Odds import failed; check Cloud Functions logs"});
   }
 });
+
+const NBA_PLAYER_MARKETS={
+ player_points:"Points",player_rebounds:"Rebounds",player_assists:"Assists",
+ player_threes:"3-Pointers Made",player_points_rebounds_assists:"Points + Rebounds + Assists"
+};
+const NBA_TEAM_MARKETS=["h2h","spreads","totals"];
+const nbaTeams={};
+async function nbaOddsImport(req,res){
+ if(req.method!=="POST")return res.status(405).json({error:"POST required"});
+ const token=/^Bearer (.+)$/.exec(req.get("Authorization")||"")?.[1];
+ if(!token)return res.status(401).json({error:"Authentication required"});
+ let decoded;try{decoded=await admin.auth().verifyIdToken(token,true)}catch{return res.status(401).json({error:"Invalid token"})}
+ if(decoded.oddsImporter!==true)return res.status(403).json({error:"Importer permission required"});
+ try{
+  const key=oddsKey.value();
+  const events=await getJSON("/sports/basketball_nba/events",key);
+  const upcoming=events.filter(e=>Date.parse(e.commence_time)>Date.now()).slice(0,8);
+  let playerCreated=0,teamCreated=0,playerQuotes=0,teamQuotes=0;
+  for(const ev of upcoming){
+   const eventId=encodeURIComponent(ev.id);
+   const url="/sports/basketball_nba/events/"+eventId+"/odds?regions=us&markets="+Object.keys(NBA_PLAYER_MARKETS).concat(NBA_TEAM_MARKETS).join(",")+"&oddsFormat=american";
+   const response=await getJSON(url,key);
+   const candidates=new Map(),teamCandidates=new Map();
+   for(const book of response.bookmakers||[])for(const market of book.markets||[])for(const out of market.outcomes||[]){
+    const isPlayer=Object.hasOwn(NBA_PLAYER_MARKETS,market.key);
+    const isTeam=NBA_TEAM_MARKETS.includes(market.key);
+    if(!isPlayer&&!isTeam)continue;
+    const point=out.point==null?null:Number(out.point),price=Number(out.price);
+    if(!Number.isFinite(price)|| (out.point!=null&&!Number.isFinite(point)))continue;
+    const name=clean(out.description||out.name);
+    if(isPlayer&&(!out.description||out.name!=="Over"||point===null||point<0))continue;
+    if(isTeam&&market.key==="spreads"&&point===null)continue;
+    if(isTeam&&market.key==="totals"&&(!["Over","Under"].includes(out.name)||point===null))continue;
+    const k=isPlayer?[ev.id,market.key,name.toLowerCase()].join("|"):[ev.id,market.key,out.name].join("|");
+    const m=isPlayer?candidates:teamCandidates;
+    const prev=m.get(k);
+    if(!prev||priority(book.key)<priority(prev.bookmaker)){
+      m.set(k,{name,market:market.key,point,price,bookmaker:book.key});
+    }
+    if(isPlayer)playerQuotes++;else teamQuotes++;
+   }
+   for(const c of candidates.values()){
+    const stat=NBA_PLAYER_MARKETS[c.market],adjusted=c.point+(["Points","Rebounds"].includes(stat)?1:0);
+    const ref=admin.firestore().collection("players").doc("oddsapi-nba-"+hash([ev.id,c.market,c.name.toLowerCase()].join("|")));
+    try{await ref.create({game:"NBA",name:c.name,team:"—",opp:clean(ev.away_team)+" @ "+clean(ev.home_team),
+      stat,book:c.point,line:adjusted,status:"upcoming",current:null,l5:[],
+      source:"the-odds-api",bookmaker:c.bookmaker,americanOdds:c.price,eventId:clean(ev.id),commenceTime:ev.commence_time,
+      starterStatus:"unverified",importedAt:admin.firestore.FieldValue.serverTimestamp()});playerCreated++}
+    catch(e){if(e.code!==6&&e.code!=="already-exists")throw e}
+   }
+   const byMarket={};for(const c of teamCandidates.values())(byMarket[c.market]??=[]).push(c);
+   const match=clean(ev.away_team)+" @ "+clean(ev.home_team);
+   for(const market of NBA_TEAM_MARKETS){
+    const rows=byMarket[market]||[];
+    let a,b,title;
+    if(market==="h2h"){a=rows.find(x=>x.name===ev.home_team);b=rows.find(x=>x.name===ev.away_team);title="Moneyline"}
+    if(market==="spreads"){a=rows.find(x=>x.name===ev.home_team);b=rows.find(x=>x.name===ev.away_team);title="Spread"}
+    if(market==="totals"){a=rows.find(x=>x.name==="Over");b=rows.find(x=>x.name==="Under");title="Total Points"}
+    if(!a||!b)continue;
+    const ref=admin.firestore().collection("players").doc("oddsapi-nba-team-"+hash([ev.id,market].join("|")));
+    const mult=odds=>odds>0?1+odds/100:1+100/Math.abs(odds);
+    const fmt=c=>c.name+(c.point===null?"":" "+(c.point>0?"+":"")+c.point);
+    try{await ref.create({kind:"team",game:"NBA",title:match+" · "+title,
+      aLabel:fmt(a),bLabel:fmt(b),aMult:Number(mult(a.price).toFixed(3)),bMult:Number(mult(b.price).toFixed(3)),
+      status:"upcoming",result:null,source:"the-odds-api",eventId:clean(ev.id),commenceTime:ev.commence_time,
+      bookmakerA:a.bookmaker,bookmakerB:b.bookmaker,americanOddsA:a.price,americanOddsB:b.price,
+      importedAt:admin.firestore.FieldValue.serverTimestamp()});teamCreated++}
+    catch(e){if(e.code!==6&&e.code!=="already-exists")throw e}
+   }
+  }
+  res.json({ok:true,events:upcoming.length,playerQuotes,teamQuotes,playerCreated,teamCreated});
+ }catch(e){console.error("NBA odds import failed",e);res.status(502).json({error:"NBA import failed; inspect function logs and API market access"})}
+}
+exports.importNbaOdds=onRequest({region:"us-central1",secrets:[oddsKey],timeoutSeconds:120,maxInstances:1,cors:["https://saintjt-coder.github.io"]},nbaOddsImport);
