@@ -10,6 +10,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: feature/pickslip-account-login
+      - name: Stage static app files
+        run: |
+          mkdir -p preview-site
+          find . -maxdepth 1 -type f \( -name '*.html' -o -name '*.js' -o -name '*.css' -o -name '*.json' -o -name '*.png' -o -name '*.svg' -o -name '*.ico' -o -name '*.webp' \) ! -name 'firebase.json' -exec cp {} preview-site/ \;
       - name: Publish isolated Firebase Hosting preview
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
