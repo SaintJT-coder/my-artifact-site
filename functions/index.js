@@ -299,3 +299,48 @@ exports.sendTestPush=pushRequest({region:"us-central1",cors:["https://saintjt-co
  const sent=results.filter(Boolean).length;
  return res.status(sent?200:502).json({ok:sent>0,sent,attempted:results.length});
 });
+
+const {onSchedule}=require("firebase-functions/v2/scheduler");
+async function sendPickslipBroadcast(title,body){
+ const db=admin.firestore();let last=null,sent=0,failed=0;
+ while(true){
+  let q=db.collection("pushDevices").where("enabled","==",true).orderBy(admin.firestore.FieldPath.documentId()).limit(300);
+  if(last)q=q.startAfter(last);
+  const snap=await q.get();if(snap.empty)break;
+  const messages=snap.docs.map(d=>({token:d.data().token,notification:{title,body},webpush:{fcmOptions:{link:"https://saintjt-coder.github.io/my-artifact-site/preview/"}}}));
+  const result=await admin.messaging().sendEach(messages);
+  sent+=result.successCount;failed+=result.failureCount;
+  const removals=[];
+  result.responses.forEach((response,i)=>{
+   if(!response.success&&["messaging/registration-token-not-registered","messaging/invalid-registration-token"].includes(response.error?.code))removals.push(snap.docs[i].ref.delete());
+  });
+  await Promise.all(removals);
+  last=snap.docs[snap.docs.length-1];
+  if(snap.size<300)break;
+ }
+ console.log("Push broadcast result",{sent,failed});
+}
+async function scheduledNflPush(kind){
+ const now=new Date();
+ const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(now);
+ const part=k=>parts.find(x=>x.type===k)?.value;
+ const day=part("year")+"-"+part("month")+"-"+part("day");
+ const eventList=await getJSON("/sports/americanfootball_nfl/events",oddsKey.value());
+ const matches=eventList.some(e=>{
+  const t=new Date(e.commence_time);
+  if(!Number.isFinite(t.getTime()))return false;
+  const local=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(t);
+  const v=k=>local.find(x=>x.type===k)?.value;
+  const date=v("year")+"-"+v("month")+"-"+v("day");
+  return date===day&&(kind==="sunday"?v("hour")==="10"&&v("minute")==="00":true);
+ });
+ if(!matches){console.log("No matching NFL games",kind,day);return}
+ const id=kind+"-"+day,ref=admin.firestore().collection("pushBroadcasts").doc(id);
+ try{await ref.create({kind,day,startedAt:admin.firestore.FieldValue.serverTimestamp()})}
+ catch(e){if(e.code===6||e.code==="already-exists"){console.log("Broadcast already started",id);return}throw e}
+ const title=kind==="sunday"?"PickSlip NFL Sunday 🏈":"Monday Night Football 🏈";
+ const body=kind==="sunday"?"Games starting soon!🚨 Place your picks now on PickSlip✅":"Monday night football is here! Are you taking the Underdog or the Favorite⁉️";
+ await sendPickslipBroadcast(title,body);
+}
+exports.sundayNflReminder=onSchedule({schedule:"30 9 * * 0",timeZone:"America/Los_Angeles",region:"us-central1",secrets:[oddsKey],timeoutSeconds:540},async()=>scheduledNflPush("sunday"));
+exports.mondayNflReminder=onSchedule({schedule:"0 16 * * 1",timeZone:"America/Los_Angeles",region:"us-central1",secrets:[oddsKey],timeoutSeconds:540},async()=>scheduledNflPush("monday"));
