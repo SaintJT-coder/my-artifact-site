@@ -1,0 +1,20 @@
+name: PickSlip Login Preview
+on:
+  workflow_dispatch:
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/pickslip-account-login
+      - name: Publish isolated Firebase Hosting preview
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_PICKSLIP }}
+          projectId: pickslip-4e265
+          channelId: pickslip-login-preview
+          expires: 7d
