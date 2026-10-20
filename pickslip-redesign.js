@@ -102,7 +102,7 @@ function redesignedBoard(){
  const T=bsub==="teams",games=["NFL","NBA","MLB","All",...GAMES.filter(g=>!["NFL","NBA","MLB"].includes(g))];
  $("main").innerHTML=`<div class="rd-sports"><button class="rd-search" data-sq="1" aria-label="Search">${IC.search}</button>${games.map(g=>`<button class="rd-sport ${gf===g?"active":""}" data-gf="${esc(g)}">${gl(g)}</button>`).join("")}</div>
  ${sq?`<div class="search"><input id="q" placeholder="Search players, teams or props" value="${esc(q)}" autocomplete="off"></div>`:""}
- ${admin?`<details class="rd-admin"><summary>Admin tools</summary><div class="tools"><button class="pill on" id="add">+ Player</button><button class="pill on" id="addt">+ Team pick</button><button class="pill" id="odds">Payout odds</button><button class="pill" id="colors">Team colors</button><button class="pill" id="vbteams">VBall teams</button><button class="pill on" id="promos">Manage promos</button><button class="pill on" id="nflimp">Import NFL props</button></div></details>`:""}
+ ${admin?`<details class="rd-admin"><summary>Admin tools</summary><div class="tools"><button class="pill on" id="add">+ Player</button><button class="pill on" id="addt">+ Team pick</button><button class="pill" id="odds">Payout odds</button><button class="pill" id="colors">Team colors</button><button class="pill" id="vbteams">VBall teams</button><button class="pill on" id="promos">Manage promos</button><button class="pill on" data-rdbalances="1">Edit balances</button><button class="pill on" id="nflimp">Import NFL props</button></div></details>`:""}
  ${rdPromoBanner()}${rdFilters()}<div class="rd-section"><h2 class="sec">${gf==="All"?(T?"Team Picks":"All Picks"):esc(gf)+" Picks"}</h2></div>${admin?hideRow(T):""}<div id="cards"></div>`;
  fillCards();
 }
@@ -172,4 +172,38 @@ document.addEventListener("click",e=>{
  if(t.dataset.rdclaim){e.stopImmediatePropagation();rdClaimPromo(t.dataset.rdclaim,t.dataset.rdstart);return}
  if(t.dataset.promobox){e.stopImmediatePropagation();rdShowPromos();return}
  if(t.dataset.optpromo){e.stopImmediatePropagation();rdShowPromos();return}
+},true);
+
+function rdBalanceEditor(){
+ if(!admin||!db)return;
+ const ids=[...new Set([myId,...Object.keys(allSlips),...Object.keys(allGameD),...Object.keys(allSpins)])].filter(Boolean);
+ const rows=ids.map(id=>{
+  const current=id===myId?balance():balFor(allSlips[id]||[],(allSpins[id]||0)+(allGames[id]||0))+(Number(allGameD[id]?.balanceAdjustment)||0);
+  return `<div class="rd-promoitem"><div class="rd-promo-info"><b>${esc(names[id]||id.slice(0,10))}</b><small>${esc(id)}</small><small>Current: $${current.toFixed(2)}</small></div><button class="rd-promo-claim" data-rdeditbal="${esc(id)}">Edit</button></div>`;
+ }).join("");
+ $("panel").innerHTML=`<div class="rd-sheet-handle"></div><button class="rd-close" data-closepanel="1">×</button><h2>User Balances</h2><p class="rd-note">Set a user's displayed play-money balance. Adjustments are stored separately from spins and slips.</p>${rows||"<p>No users found.</p>"}`;
+ $("sheet").classList.add("open");
+}
+async function rdEditBalance(uid){
+ if(!admin||!db||!uid)return;
+ const current=uid===myId?balance():balFor(allSlips[uid]||[],(allSpins[uid]||0)+(allGames[uid]||0))+(Number(allGameD[uid]?.balanceAdjustment)||0);
+ const answer=prompt("New play-money balance for "+(names[uid]||uid)+":",current.toFixed(2));
+ if(answer===null)return;
+ if(!/^\d+(?:\.\d{1,2})?$/.test(answer.trim())){alert("Enter a nonnegative amount with up to 2 decimal places.");return}
+ const target=Number(answer);if(!Number.isFinite(target)||target>100000000){alert("Invalid balance.");return}
+ if(!confirm("Set "+(names[uid]||uid)+" balance to $"+target.toFixed(2)+"?"))return;
+ try{
+  const doc=db.doc("games/"+uid);
+  await db.runTransaction(async tx=>{
+   const snap=await tx.get(doc),data=snap.exists?snap.data():{};
+   const base=balFor(allSlips[uid]||[],(allSpins[uid]||0)+(Number(data.total)||0));
+   tx.set(doc,{balanceAdjustment:Math.round((target-base)*100)/100},{merge:true});
+  });
+  toast("Balance updated");rdBalanceEditor();
+ }catch(e){alert("Balance update failed. Check Firebase permissions: "+(e.message||e))}
+}
+document.addEventListener("click",e=>{
+ const b=e.target.closest("button");if(!b)return;
+ if(b.dataset.rdbalances){e.stopImmediatePropagation();rdBalanceEditor()}
+ if(b.dataset.rdeditbal){e.stopImmediatePropagation();rdEditBalance(b.dataset.rdeditbal)}
 },true);
