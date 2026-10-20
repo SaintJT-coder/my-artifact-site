@@ -156,7 +156,7 @@ const DEF={p2:3,p3:5,p4:10,p5:20,p6:37.5,f3_3:2.25,f3_2:1.25,f4_4:5,f4_3:1.5,f5_
 const PDEF={taco:true,flexfri:true,fboost:1.4,prot:true,boostOn:false,boostPct:25,boostGame:"All",demon:1.5,goblin:0.75,guar:1,spinTok:0.1,events:[],challenges:[],grants:{}};
 const FREEAMT=10,REFCAP=5;
 const FROWS=[[3,[3,2]],[4,[4,3]],[5,[5,4,3]],[6,[6,5,4]]];
-let db=null,admin=false,myId=null,players={},entries=[],payouts={...DEF},view="board",bsub="players",bsubChosen=false,picks={},tpicks={},mode="power",amt=10,status="Connecting…",gf="All",sq=false,q="",esub="active",spin={total:0},gm={total:0},allGames={},gsub="spin",allSlips={},allSpins={},names={},U=null,spinning=false,wheelDeg=0,lastWin=0,lastTok=0,hid={},showHid=false,wf="All",sf="All",promo={...PDEF},allSpinD={},useFree=false,optFri=true;
+let db=null,admin=false,myId=null,players={},entries=[],payouts={...DEF},view="board",bsub="players",bsubChosen=false,picks={},tpicks={},mode="power",amt=10,status="Connecting…",gf="NFL",sq=false,q="",esub="active",spin={total:0},gm={total:0},allGames={},gsub="spin",allSlips={},allSpins={},names={},U=null,spinning=false,wheelDeg=0,lastWin=0,lastTok=0,hid={},showHid=false,wf="All",sf="All",promo={...PDEF},allSpinD={},useFree=false,optFri=true;
 const LS="pickslip-prefs";
 try{const v=JSON.parse(localStorage.getItem(LS)||"{}");if(v.picks&&typeof v.picks==="object")picks=v.picks;if(v.tpicks&&typeof v.tpicks==="object")tpicks=v.tpicks;if(v.mode==="flex")mode="flex";if([5,10,25,50].includes(v.amt))amt=v.amt;if(["board","entries","feed","spin","profile"].includes(v.view))view=v.view;if(v.bsubChosen&&(v.bsub==="teams"||v.bsub==="players")){bsub=v.bsub;bsubChosen=true};if(v.gf)gf=v.gf;if(v.hid&&typeof v.hid==="object")hid=v.hid;if(typeof v.wf==="string")wf=v.wf;if(typeof v.sf==="string")sf=v.sf}catch(e){}
 function savePrefs(){try{localStorage.setItem(LS,JSON.stringify({picks,tpicks,mode,amt,view,bsub,bsubChosen,gf,hid,wf,sf}))}catch(e){}}
@@ -199,15 +199,15 @@ const balFor=(ents,t)=>{let b=100+(t||0);ents.forEach(e=>{const v=evalEntry(e);i
 const slug=x=>String(x||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
 const dow=()=>new Date().getDay();
 const myDay=ts=>new Date(ts).toLocaleDateString("en-CA");
-const isFri=()=>!!promo.flexfri&&dow()===5&&window.pickslipPromoOptIn===true;
+const isFri=()=>!!promo.flexfri&&dow()===5&&window.pickslipHasPromo?.("flexfri")===true;
 const SP=uid=>allSpinD[uid]||(uid===myId?spin:{});
-const protOK=()=>!!promo.prot&&window.pickslipPromoOptIn===true&&!entries.some(e=>(e.day||myDay(e.ts))===today());
+const protOK=()=>!!promo.prot&&window.pickslipHasPromo?.("prot")===true&&!entries.some(e=>(e.day||myDay(e.ts))===today());
 const pmOf=p=>p.promo==="demon"?promo.demon:p.promo==="goblin"?promo.goblin:p.promo==="guarantee"?promo.guar:1;
 function boostFor(game){
-  if(window.pickslipPromoOptIn!==true)return 1;
+  if(typeof window.pickslipHasPromo!=="function")return 1;
   let b=1;const t=today();
-  if(promo.boostOn&&(!promo.boostGame||promo.boostGame==="All"||promo.boostGame===game))b=Math.max(b,1+promo.boostPct/100);
-  (promo.events||[]).forEach(ev=>{if(ev.from<=t&&t<=ev.to&&(!ev.game||ev.game==="All"||ev.game===game))b=Math.max(b,1+(ev.pct||0)/100)});
+  if(promo.boostOn&&window.pickslipHasPromo("boost")&&(!promo.boostGame||promo.boostGame==="All"||promo.boostGame===game))b=Math.max(b,1+promo.boostPct/100);
+  (promo.events||[]).forEach((ev,i)=>{if(window.pickslipHasPromo("event-"+i)&&ev.from<=t&&t<=ev.to&&(!ev.game||ev.game==="All"||ev.game===game))b=Math.max(b,1+(ev.pct||0)/100)});
   return b;
 }
 const inRange=(e,c)=>{const d=e.day||myDay(e.ts);return(!c.from||d>=c.from)&&(!c.to||d<=c.to)};
