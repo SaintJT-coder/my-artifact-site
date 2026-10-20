@@ -300,7 +300,7 @@ function render(){
   $("tabbar").innerHTML=[["board","Board"],["entries","My Entries"],["feed","Feed"],["spin","Play"],["profile","Profile"]].map(([k,l])=>`<button class="tb2 ${view===k?"on":""}" data-v="${k}">${IC[k]}${l}</button>`).join("");
   const cur=bsub==="teams"?tpicks:picks,n=Object.keys(cur).length,min=bsub==="teams"?1:2,sb=$("open");
   sb.hidden=!(view==="board"&&n>0&&db);sb.disabled=n<min;sb.textContent=n<min?`Pick ${min-n} more`:`View slip (${n})`;
-  if(!db){$("main").innerHTML=`<div class="empty">${esc(status)}<br>Open this page while signed in to claude.ai to see the board.</div>`;return}
+  if(!db){$("main").innerHTML=`<div class="empty">${esc(status)}</div>`;return}
   if(view==="spin"&&gsub!=="spin")gamePage();else ({board,entries:entriesPage,feed:feedPage,spin:spinPage,profile:profilePage})[view]();
 }
 function board(){return redesignedBoard()}
