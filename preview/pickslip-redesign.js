@@ -89,7 +89,7 @@ function rdNbaLoadHeads(){
     const athletes=(data.athletes||[]).flatMap(a=>Array.isArray(a.items)?a.items:[a]);
     for(const a of athletes){
      const name=rdNorm(a.displayName||a.fullName),id=String(a.id||"");
-     if(!name||!/^\\d+$/.test(id))continue;
+     if(!name||!/^\d+$/.test(id))continue;
      rdNbaHeads.set(name,a.headshot?.href||"https://a.espncdn.com/i/headshots/nba/players/full/"+id+".png");
     }
     rdApplyPhotos();
@@ -102,7 +102,13 @@ function rdHeadshot(p){
  let url=p.headshotUrl||p.photoUrl||p.imageUrl||p.headshot;
  if(typeof url==="object")url=url.href;
  if(typeof url==="string"&&/^https:\/\/[^"'<>\s]+$/.test(url))return url;
- if(/^\d+$/.test(String(p.espnId||"")))return "https://a.espncdn.com/i/headshots/nfl/players/full/"+p.espnId+".png";
+ const id=String(p.espnId||"");
+ if(p.game==="NBA"){
+  if(/^\d+$/.test(id))return "https://a.espncdn.com/i/headshots/nba/players/full/"+id+".png";
+  rdNbaLoadHeads();
+  return rdNbaHeads.get(rdNorm(p.name))||"";
+ }
+ if(/^\d+$/.test(id))return "https://a.espncdn.com/i/headshots/nfl/players/full/"+id+".png";
  const team=rdTeam(p.team);if(team)rdFetchRoster(team);
  return (rdCache.get(team)||new Map()).get(rdNorm(p.name))||"";
 }
@@ -113,7 +119,7 @@ function rdApplyPhotos(){
  });
 }
 function rdPhoto(p,large){
- const team=rdTeam(p.team),url=rdHeadshot(p),logo=team?"https://a.espncdn.com/i/teamlogos/nfl/500/"+RD_TEAMS[team][0]+".png":"";
+ const team=rdTeam(p.team),url=rdHeadshot(p),logo=p.game==="NFL"&&team?"https://a.espncdn.com/i/teamlogos/nfl/500/"+RD_TEAMS[team][0]+".png":"";
  return `<div class="rd-photo ${large?"rd-photo-large":""}" style="--team:${esc(rdColor(p))}">
  <span class="rd-initial">${esc(ini(p.name||"?"))}</span>
  ${logo?`<img class="rd-logo" src="${esc(logo)}" loading="lazy" alt="" onerror="this.style.display='none'">`:""}
