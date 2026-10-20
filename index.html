@@ -308,7 +308,7 @@ function legacyBoard(){
   const T=bsub==="teams";
   $("main").innerHTML=`<div class="pills"><button class="pill ic ${sq?"on":""}" data-sq="1" aria-label="Search">${IC.search}</button>${["All",...GAMES].map(g=>`<button class="pill ${gf===g?"on":""}" data-gf="${esc(g)}">${gl(g)}</button>`).join("")}</div>
   ${sq?`<div class="search"><input id="q" placeholder="Search" value="${esc(q)}" autocomplete="off"></div>`:""}
-  ${admin?`<div class="tools"><button class="pill on" id="add">+ Player</button><button class="pill on" id="addt">+ Team pick</button><button class="pill" id="odds">Payout odds</button><button class="pill" id="colors">Team colors</button><button class="pill" id="vbteams">VBall teams</button><button class="pill on" id="promos">Promos</button><button class="pill on" id="nflimp">Import NFL props</button></div>`:""}
+  ${admin?`<div class="tools"><button class="pill on" id="add">+ Player</button><button class="pill on" id="addt">+ Team pick</button><button class="pill" id="odds">Payout odds</button><button class="pill" id="colors">Team colors</button><button class="pill" id="vbteams">VBall teams</button><button class="pill on" id="promos">Promos</button><button class="pill on" id="nflimp">Import NFL props</button><button class="pill on" id="cfbimp">Import CFB passing</button></div>`:""}
   ${promoBanner()}${nflFilters(T)}
   <h2 class="sec">${gf==="All"?(T?"Team Picks":"All Picks"):gl(gf)+" Picks"}</h2>${hideRow(T)}<div id="cards"></div>`;
   fillCards();
@@ -677,6 +677,7 @@ document.addEventListener("click",e=>{
   }
   else if(id==="promos")promoEditor();
   else if(id==="nflimp")nflEditor();
+  else if(id==="cfbimp"){$("sheet").classList.add("open");$("panel").innerHTML=`<h2>Import CFB Passing Yards</h2><p class="note">Verified DraftKings passing-yard lines for the top 30 FBS QBs, ranked through Oct 17, 2026. Missing lines are skipped. Existing picks are never overwritten.</p><button class="cta" id="cfbfetch">Fetch DraftKings CFB Lines</button><div class="note" id="cfbfetchstatus" role="status">Only verified DraftKings Over/Under lines will be imported.</div>`;}
   else if(id==="savepr"){
     const g=k=>$(k).value,nn=k=>parseFloat($(k).value);
     const ev=(g("pr-ev")||"").split("\n").map(l=>l.split("|").map(x=>x.trim())).filter(a=>a[0]&&a[1]&&a[2]).map(a=>({id:slug(a[0]+a[1]),title:a[0],from:a[1],to:a[2],pct:parseFloat(a[3])||0,game:a[4]||"All"}));
@@ -689,6 +690,25 @@ document.addEventListener("click",e=>{
     const gr={...(promo.grants||{})};gr[u]=(gr[u]||0)+n;
     write(async()=>{await db.doc("settings/promos").set({...promo,grants:gr});toast("Gave "+n+" free entr"+(n>1?"ies":"y"))});
   }
+  else if(id==="cfbfetch"){ (async()=>{
+    if(!admin)return;
+    const btn=$("cfbfetch"),msg=$("cfbfetchstatus");
+    btn.disabled=true;btn.textContent="Importing...";
+    msg.textContent="Checking upcoming CFB games for verified DraftKings lines...";
+    try{
+      const user=firebase.auth().currentUser;
+      if(!user)throw new Error("Please sign in again.");
+      const token=await user.getIdToken(true);
+      const res=await fetch("https://us-central1-pickslip-4e265.cloudfunctions.net/importCfbDraftKingsPassing",{
+        method:"POST",headers:{"Authorization":"Bearer "+token}
+      });
+      const data=await res.json();
+      if(!res.ok||!data.ok)throw new Error(data.error||"Import failed (HTTP "+res.status+")");
+      msg.textContent="Checked "+data.eventsChecked+" games. "+data.verifiedDraftKingsProps+" verified DraftKings QB lines; "+data.playableCreated+" new PickSlip props created."+(data.unavailableEvents?" "+data.unavailableEvents+" games had unavailable odds.":"");
+      toast("CFB DraftKings check complete");
+    }catch(err){msg.textContent="Import failed: "+err.message;}
+    finally{btn.disabled=false;btn.textContent="Fetch DraftKings CFB Lines";}
+  })();}
   else if(id==="nflfetch"){ (async()=>{
     if(!admin)return;
     const btn=$("nflfetch"),msg=$("nflfetchstatus");
