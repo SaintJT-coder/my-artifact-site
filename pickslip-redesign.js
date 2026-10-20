@@ -6,9 +6,56 @@ function rdTeam(name){const n=rdNorm(name);return Object.keys(RD_TEAMS).find(k=>
 const rdColor=p=>p.game==="NFL"&&rdTeam(p.team)?RD_TEAMS[rdTeam(p.team)][1]:tc(p.team);
 const rdAbbr=p=>rdTeam(p.team)?RD_TEAMS[rdTeam(p.team)][0].toUpperCase():abbr(p.team);
 const rdCache=new Map(),rdPending=new Set();
-let rdDetailId=null,rdOptIn=false;
-try{rdOptIn=localStorage.getItem("pickslip-promos-optin")==="yes"}catch(e){}
-window.pickslipPromoOptIn=rdOptIn;
+let rdDetailId=null;
+const rdClaimKey="pickslip-promo-claims-v2";
+function rdClaims(){try{return JSON.parse(localStorage.getItem(rdClaimKey)||"{}")}catch(e){return {}}}
+function rdHasClaim(id,started){const k=String(myId||"guest")+":"+id+":"+started;return !!rdClaims()[k]}
+window.pickslipHasPromo=(id)=>rdPromoList().some(p=>p.id===id&&rdHasClaim(id,p.start));
+function rdDayStart(date){return new Date(date.getFullYear(),date.getMonth(),date.getDate()).getTime()}
+function rdPromoList(){
+ const now=new Date(),start=rdDayStart(now),end=start+86400000,t=today(),o=[];
+ const add=(id,icon,title,desc,from=start)=>{const until=from+86400000;if(Date.now()>=from&&Date.now()<until)o.push({id,icon,title,desc,start:from,end:until})};
+ if(promo.prot&&!entries.some(e=>(e.day||myDay(e.ts))===t))add("prot","🛡️","First entry protection","Protect your first eligible paid slip today.");
+ if(promo.taco&&now.getDay()===2)add("taco","🌮","Taco Tuesday","Special Tuesday player lines.");
+ if(promo.flexfri&&now.getDay()===5)add("flexfri","🔥","Flex Friday",`Flex payout boost of ${Math.round((promo.fboost-1)*100)}%.`);
+ if(promo.boostOn)add("boost","⚡","Payout boost",`${promo.boostPct}% boost for eligible picks.`);
+ (promo.events||[]).forEach((ev,i)=>{if(ev.from&&ev.to&&ev.from<=t&&ev.to>=t){const d=new Date(ev.from+"T00:00:00");if(!isNaN(d))add("event-"+i,"🎉",ev.title,`${ev.pct}% payout boost.`,d.getTime())}});
+ return o;
+}
+function rdClock(ms){const s=Math.max(0,Math.ceil(ms/1000));return [Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(n=>String(n).padStart(2,"0")).join(":")}
+function rdColorFor(end,start,now){const elapsed=now-start;return elapsed<28800000?"green":elapsed<57600000?"yellow":"red"}
+function rdPromoBanner(){
+ const list=rdPromoList(),next=list.filter(p=>!rdHasClaim(p.id,p.start)).sort((a,b)=>a.end-b.end)[0];
+ return `<button class="rd-promocard" type="button" data-promobox="1"><span class="rd-gift">🎁</span><span class="rd-promotext"><strong>View Promo Rewards</strong><small>${list.length} available reward${list.length===1?"":"s"}${next?" · Ending soon":""}</small></span><span class="rd-arrow">›</span></button>`;
+}
+function rdShowPromos(){
+ const rows=rdPromoList().map(p=>{
+  const claimed=rdHasClaim(p.id,p.start),phase=rdColorFor(p.end,p.start,Date.now());
+  return `<div class="rd-promoitem rd-promo-${phase}" data-promo-id="${esc(p.id)}" data-start="${p.start}" data-end="${p.end}"><span>${p.icon}</span><div class="rd-promo-info"><b>${esc(p.title)}</b><small>${esc(p.desc)}</small><div class="rd-promo-timer" data-promo-clock="${p.end}">⏱ ${rdClock(p.end-Date.now())}</div></div><button class="rd-promo-claim" data-rdclaim="${esc(p.id)}" data-rdstart="${p.start}" ${claimed?"disabled":""}>${claimed?"Claimed ✓":"Opt in"}</button></div>`;
+ }).join("");
+ $("panel").innerHTML=`<div class="rd-sheet-handle"></div><button class="rd-close" data-closepanel="1" aria-label="Close">×</button><h2>Promo Rewards</h2><p class="rd-note">Opt in to each reward before its 24-hour window expires. Timers use your device's local time. Green: first 8 hours · yellow: next 8 · red: final 8.</p>${rows||'<p class="rd-note">No rewards are available right now.</p>'}<p class="rd-note">Claims are saved on this device. An opt-in does not guarantee a winning entry.</p>`;
+ $("sheet").classList.add("open");
+}
+function rdClaimPromo(id,started){
+ const p=rdPromoList().find(p=>p.id===id&&p.start===Number(started));
+ if(!p||Date.now()>=p.end){rdShowPromos();return}
+ const claims=rdClaims();claims[String(myId||"guest")+":"+id+":"+p.start]=true;
+ try{localStorage.setItem(rdClaimKey,JSON.stringify(claims))}catch(e){alert("Unable to save your opt-in on this device.");return}
+ rdShowPromos();toast("Reward opted in");
+}
+function rdTickPromos(){
+ const panel=$("panel");if(!panel||!$("sheet").classList.contains("open"))return;
+ const clocks=panel.querySelectorAll("[data-promo-clock]");
+ clocks.forEach(el=>{
+  const row=el.closest("[data-promo-id]");if(!row)return;
+  const end=Number(row.dataset.end),start=Number(row.dataset.start),now=Date.now();
+  if(now>=end){rdShowPromos();return}
+  el.textContent="⏱ "+rdClock(end-now);
+  row.classList.remove("rd-promo-green","rd-promo-yellow","rd-promo-red");
+  row.classList.add("rd-promo-"+rdColorFor(end,start,now));
+ });
+}
+setInterval(rdTickPromos,1000);
 function rdFetchRoster(team){
  if(!team||rdCache.has(team)||rdPending.has(team))return;
  rdPending.add(team);
@@ -44,25 +91,6 @@ function rdPhoto(p,large){
  ${logo?`<img class="rd-logo" src="${esc(logo)}" loading="lazy" alt="" onerror="this.style.display='none'">`:""}
  <img class="rd-headshot" ${url?`src="${esc(url)}"`:""} data-rd-player="${esc(p.name)}" data-rd-team="${esc(team||"")}" alt="${esc(p.name)}" loading="lazy" onload="this.classList.add('ready')" onerror="this.classList.remove('ready');this.removeAttribute('src')">
  </div>`;
-}
-function rdPromoList(){
- const o=[],t=today(),tk=myId?Math.max(0,tokensOf(myId)):0;
- if(promo.prot&&!entries.some(e=>(e.day||myDay(e.ts))===t))o.push(["🛡️","First entry protection","Eligible first paid slip is protected today."]);
- if(promo.taco&&dow()===2)o.push(["🌮","Taco Tuesday","Special player lines are available."]);
- if(promo.flexfri&&dow()===5)o.push(["🔥","Flex Friday",`Flex payout boost of ${Math.round((promo.fboost-1)*100)}%.`]);
- if(promo.boostOn)o.push(["⚡","Payout boost",`${promo.boostPct}% boost for eligible picks.`]);
- (promo.events||[]).filter(ev=>ev.from<=t&&ev.to>=t).forEach(ev=>o.push(["🎉",ev.title,`${ev.pct}% payout boost.`]));
- if(tk)o.push(["🎟️",tk+" free "+(tk===1?"entry":"entries"),"Redeem an available free entry in your slip."]);
- return o;
-}
-function rdPromoBanner(){
- const n=rdPromoList().length;
- return `<button class="rd-promocard" type="button" data-promobox="1"><span class="rd-gift">🎁</span><span class="rd-promotext"><strong>${rdOptIn?"Promos activated":"Opt in for promos"}</strong><small>${n?n+" available benefit"+(n===1?"":"s")+" · ":""}Free entries, boosts and more</small></span><span class="rd-arrow">›</span></button>`;
-}
-function rdShowPromos(){
- const rows=rdPromoList().map(([icon,title,desc])=>`<div class="rd-promoitem"><span>${icon}</span><div><b>${esc(title)}</b><small>${esc(desc)}</small></div></div>`).join("");
- $("panel").innerHTML=`<div class="rd-sheet-handle"></div><button class="rd-close" data-closepanel="1" aria-label="Close">×</button><h2>Promotions</h2><p class="rd-note">Choose whether to activate promotional benefits for your picks.</p>${rows||'<p class="rd-note">There are no active offers at this time.</p>'}<button class="rd-opt" data-optpromo="1">${rdOptIn?"Turn off promo opt-in":"Opt in to promotions"}</button><p class="rd-note">Your preference is saved on this device. Free entries you have already earned remain available.</p>`;
- $("sheet").classList.add("open");
 }
 function rdFilters(){
  if(gf!=="NFL"||bsub==="teams")return"";
@@ -137,3 +165,10 @@ function rdShowDetail(id,stat){
  $("sheet").classList.add("open");rdApplyPhotos();
 }
 document.addEventListener("change",e=>{if(e.target.id==="rd-week"){wf=e.target.value;render()}else if(e.target.id==="rd-stat"){sf=e.target.value;render()}});
+
+document.addEventListener("click",e=>{
+ const t=e.target.closest("button");if(!t)return;
+ if(t.dataset.rdclaim){e.stopImmediatePropagation();rdClaimPromo(t.dataset.rdclaim,t.dataset.rdstart);return}
+ if(t.dataset.promobox){e.stopImmediatePropagation();rdShowPromos();return}
+ if(t.dataset.optpromo){e.stopImmediatePropagation();rdShowPromos();return}
+},true);
