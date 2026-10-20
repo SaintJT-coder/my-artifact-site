@@ -175,3 +175,81 @@ async function nbaOddsImport(req,res){
  }catch(e){console.error("NBA odds import failed",e);res.status(502).json({error:"NBA import failed; inspect function logs and API market access"})}
 }
 exports.importNbaOdds=onRequest({region:"us-central1",secrets:[oddsKey],timeoutSeconds:120,maxInstances:1,cors:["https://saintjt-coder.github.io"]},nbaOddsImport);
+
+const CFB_POLL_DATE="2026-10-18";
+const CFB_TOP30=[
+ "Miami","BYU","Ohio State","Notre Dame","Georgia","Indiana","Ole Miss","Texas Tech","UCLA","Utah",
+ "Tennessee","Kentucky","Alabama","Houston","Iowa","USC","Wake Forest","LSU","Texas","Florida",
+ "Boise State","Missouri","SMU","Northwestern","Arizona","Oklahoma State","Oregon","Auburn","James Madison","Mississippi State"
+];
+// AP Top 25 plus the five highest receiving-votes teams (Oct 18 2026).
+// Revalidate/update this list each poll week; never silently claim it is a live ranking.
+const cfbNorm=x=>String(x||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+const CFB_ALIASES={
+ "miami":["miami hurricanes","miami fl","miami (fl)"],
+ "byu":["byu cougars","brigham young"],
+ "ole miss":["ole miss rebels","mississippi rebels"],
+ "usc":["usc trojans","southern cal","southern california"],
+ "lsu":["lsu tigers","louisiana state"],
+ "smu":["smu mustangs","southern methodist"],
+ "uc la":["ucla bruins"]
+};
+function cfbRank(team){
+ const t=cfbNorm(team);
+ for(let i=0;i<CFB_TOP30.length;i++){
+  const key=cfbNorm(CFB_TOP30[i]),aliases=(CFB_ALIASES[key]||[]).map(cfbNorm);
+  if(t===key||t.startsWith(key+" ")||aliases.some(a=>t===a||t.startsWith(a+" ")))return i+1;
+ }
+ return null;
+}
+exports.importCfbOdds=onRequest({region:"us-central1",secrets:[oddsKey],timeoutSeconds:120,maxInstances:1,cors:["https://saintjt-coder.github.io"]},async(req,res)=>{
+ if(req.method!=="POST")return res.status(405).json({error:"POST required"});
+ const token=/^Bearer (.+)$/.exec(req.get("Authorization")||"")?.[1];
+ if(!token)return res.status(401).json({error:"Authentication required"});
+ let decoded;try{decoded=await admin.auth().verifyIdToken(token,true)}catch{return res.status(401).json({error:"Invalid token"})}
+ if(decoded.oddsImporter!==true)return res.status(403).json({error:"Importer permission required"});
+ try{
+  const key=oddsKey.value();
+  const odds=await getJSON("/sports/americanfootball_ncaaf/odds?regions=us&markets=h2h,spreads,totals&oddsFormat=american",key);
+  let games=0,created=0,quotes=0;
+  for(const ev of odds){
+   if(Date.parse(ev.commence_time)<=Date.now())continue;
+   const homeRank=cfbRank(ev.home_team),awayRank=cfbRank(ev.away_team);
+   if(!homeRank&&!awayRank)continue;
+   games++;
+   const markets=new Map();
+   for(const book of ev.bookmakers||[])for(const market of book.markets||[]){
+    if(!["h2h","spreads","totals"].includes(market.key))continue;
+    for(const o of market.outcomes||[]){
+     const price=Number(o.price),point=o.point==null?null:Number(o.point);
+     if(!Number.isFinite(price)||(point!==null&&!Number.isFinite(point)))continue;
+     const k=market.key+"|"+o.name,old=markets.get(k);
+     if(!old||priority(book.key)<priority(old.bookmaker)){
+      markets.set(k,{name:o.name,point,price,bookmaker:book.key});
+     }
+     quotes++;
+    }
+   }
+   const get=(market,name)=>markets.get(market+"|"+name);
+   const decimal=price=>Number((price>0?1+price/100:1+100/Math.abs(price)).toFixed(3));
+   const fmt=x=>x.name+(x.point==null?"":" "+(x.point>0?"+":"")+x.point);
+   for(const market of ["h2h","spreads","totals"]){
+    const a=get(market,market==="totals"?"Over":ev.home_team);
+    const b=get(market,market==="totals"?"Under":ev.away_team);
+    if(!a||!b)continue;
+    const label={h2h:"Moneyline",spreads:"Spread",totals:"Total Points"}[market];
+    const ref=admin.firestore().collection("players").doc("oddsapi-cfb-"+hash([ev.id,market].join("|")));
+    try{
+     await ref.create({kind:"team",game:"CFB",title:clean(ev.away_team)+" @ "+clean(ev.home_team)+" · "+label,
+      aLabel:fmt(a),bLabel:fmt(b),aMult:decimal(a.price),bMult:decimal(b.price),
+      status:"upcoming",result:null,source:"the-odds-api",eventId:clean(ev.id),
+      commenceTime:ev.commence_time,bookmakerA:a.bookmaker,bookmakerB:b.bookmaker,
+      americanOddsA:a.price,americanOddsB:b.price,homeRank,awayRank,
+      pollDate:CFB_POLL_DATE,importedAt:admin.firestore.FieldValue.serverTimestamp()});
+     created++;
+    }catch(e){if(e.code!==6&&e.code!=="already-exists")throw e}
+   }
+  }
+  res.json({ok:true,games,created,quotes,pollDate:CFB_POLL_DATE,rankedTeams:CFB_TOP30.length});
+ }catch(e){console.error("CFB odds import failed",e);res.status(502).json({error:"CFB import failed; verify API key coverage and Cloud Functions logs"})}
+});
