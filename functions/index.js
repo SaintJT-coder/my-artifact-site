@@ -101,3 +101,313 @@ exports.importNflOdds = onRequest({region:"us-central1",secrets:[oddsKey],timeou
     return res.status(502).json({error:"Odds import failed; check Cloud Functions logs"});
   }
 });
+
+const NBA_PLAYER_MARKETS={
+ player_points:"Points",player_rebounds:"Rebounds",player_assists:"Assists",
+ player_threes:"3-Pointers Made",player_points_rebounds_assists:"Points + Rebounds + Assists"
+};
+const NBA_TEAM_MARKETS=["h2h","spreads","totals"];
+const nbaTeams={};
+async function nbaOddsImport(req,res){
+ if(req.method!=="POST")return res.status(405).json({error:"POST required"});
+ const token=/^Bearer (.+)$/.exec(req.get("Authorization")||"")?.[1];
+ if(!token)return res.status(401).json({error:"Authentication required"});
+ let decoded;try{decoded=await admin.auth().verifyIdToken(token,true)}catch{return res.status(401).json({error:"Invalid token"})}
+ if(decoded.oddsImporter!==true)return res.status(403).json({error:"Importer permission required"});
+ try{
+  const key=oddsKey.value();
+  const events=await getJSON("/sports/basketball_nba/events",key);
+  const upcoming=events.filter(e=>Date.parse(e.commence_time)>Date.now()).slice(0,8);
+  let playerCreated=0,teamCreated=0,playerQuotes=0,teamQuotes=0;
+  for(const ev of upcoming){
+   const eventId=encodeURIComponent(ev.id);
+   const url="/sports/basketball_nba/events/"+eventId+"/odds?regions=us&markets="+Object.keys(NBA_PLAYER_MARKETS).concat(NBA_TEAM_MARKETS).join(",")+"&oddsFormat=american";
+   const response=await getJSON(url,key);
+   const candidates=new Map(),teamCandidates=new Map();
+   for(const book of response.bookmakers||[])for(const market of book.markets||[])for(const out of market.outcomes||[]){
+    const isPlayer=Object.hasOwn(NBA_PLAYER_MARKETS,market.key);
+    const isTeam=NBA_TEAM_MARKETS.includes(market.key);
+    if(!isPlayer&&!isTeam)continue;
+    const point=out.point==null?null:Number(out.point),price=Number(out.price);
+    if(!Number.isFinite(price)|| (out.point!=null&&!Number.isFinite(point)))continue;
+    const name=clean(out.description||out.name);
+    if(isPlayer&&(!out.description||out.name!=="Over"||point===null||point<0))continue;
+    if(isTeam&&market.key==="spreads"&&point===null)continue;
+    if(isTeam&&market.key==="totals"&&(!["Over","Under"].includes(out.name)||point===null))continue;
+    const k=isPlayer?[ev.id,market.key,name.toLowerCase()].join("|"):[ev.id,market.key,out.name].join("|");
+    const m=isPlayer?candidates:teamCandidates;
+    const prev=m.get(k);
+    if(!prev||priority(book.key)<priority(prev.bookmaker)){
+      m.set(k,{name,market:market.key,point,price,bookmaker:book.key});
+    }
+    if(isPlayer)playerQuotes++;else teamQuotes++;
+   }
+   for(const c of candidates.values()){
+    const stat=NBA_PLAYER_MARKETS[c.market],adjusted=c.point+(["Points","Rebounds"].includes(stat)?1:0);
+    const ref=admin.firestore().collection("players").doc("oddsapi-nba-"+hash([ev.id,c.market,c.name.toLowerCase()].join("|")));
+    try{await ref.create({game:"NBA",name:c.name,team:"—",opp:clean(ev.away_team)+" @ "+clean(ev.home_team),
+      stat,book:c.point,line:adjusted,status:"upcoming",current:null,l5:[],
+      source:"the-odds-api",bookmaker:c.bookmaker,americanOdds:c.price,eventId:clean(ev.id),commenceTime:ev.commence_time,
+      starterStatus:"unverified",importedAt:admin.firestore.FieldValue.serverTimestamp()});playerCreated++}
+    catch(e){if(e.code!==6&&e.code!=="already-exists")throw e}
+   }
+   const byMarket={};for(const c of teamCandidates.values())(byMarket[c.market]??=[]).push(c);
+   const match=clean(ev.away_team)+" @ "+clean(ev.home_team);
+   for(const market of NBA_TEAM_MARKETS){
+    const rows=byMarket[market]||[];
+    let a,b,title;
+    if(market==="h2h"){a=rows.find(x=>x.name===ev.home_team);b=rows.find(x=>x.name===ev.away_team);title="Moneyline"}
+    if(market==="spreads"){a=rows.find(x=>x.name===ev.home_team);b=rows.find(x=>x.name===ev.away_team);title="Spread"}
+    if(market==="totals"){a=rows.find(x=>x.name==="Over");b=rows.find(x=>x.name==="Under");title="Total Points"}
+    if(!a||!b)continue;
+    const ref=admin.firestore().collection("players").doc("oddsapi-nba-team-"+hash([ev.id,market].join("|")));
+    const mult=odds=>odds>0?1+odds/100:1+100/Math.abs(odds);
+    const fmt=c=>c.name+(c.point===null?"":" "+(c.point>0?"+":"")+c.point);
+    try{await ref.create({kind:"team",game:"NBA",title:match+" · "+title,
+      aLabel:fmt(a),bLabel:fmt(b),aMult:Number(mult(a.price).toFixed(3)),bMult:Number(mult(b.price).toFixed(3)),
+      status:"upcoming",result:null,source:"the-odds-api",eventId:clean(ev.id),commenceTime:ev.commence_time,
+      bookmakerA:a.bookmaker,bookmakerB:b.bookmaker,americanOddsA:a.price,americanOddsB:b.price,
+      importedAt:admin.firestore.FieldValue.serverTimestamp()});teamCreated++}
+    catch(e){if(e.code!==6&&e.code!=="already-exists")throw e}
+   }
+  }
+  res.json({ok:true,events:upcoming.length,playerQuotes,teamQuotes,playerCreated,teamCreated});
+ }catch(e){console.error("NBA odds import failed",e);res.status(502).json({error:"NBA import failed; inspect function logs and API market access"})}
+}
+exports.importNbaOdds=onRequest({region:"us-central1",secrets:[oddsKey],timeoutSeconds:120,maxInstances:1,cors:["https://saintjt-coder.github.io"]},nbaOddsImport);
+
+const CFB_POLL_DATE="2026-10-18";
+const CFB_TOP30=[
+ "Miami","BYU","Ohio State","Notre Dame","Georgia","Indiana","Ole Miss","Texas Tech","UCLA","Utah",
+ "Tennessee","Kentucky","Alabama","Houston","Iowa","USC","Wake Forest","LSU","Texas","Florida",
+ "Boise State","Missouri","SMU","Northwestern","Arizona","Oklahoma State","Oregon","Auburn","James Madison","Mississippi State"
+];
+// AP Top 25 plus the five highest receiving-votes teams (Oct 18 2026).
+// Revalidate/update this list each poll week; never silently claim it is a live ranking.
+const cfbNorm=x=>String(x||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+const CFB_ALIASES={
+ "miami":["miami hurricanes","miami fl","miami (fl)"],
+ "byu":["byu cougars","brigham young"],
+ "ole miss":["ole miss rebels","mississippi rebels"],
+ "usc":["usc trojans","southern cal","southern california"],
+ "lsu":["lsu tigers","louisiana state"],
+ "smu":["smu mustangs","southern methodist"],
+ "uc la":["ucla bruins"]
+};
+function cfbRank(team){
+ const t=cfbNorm(team);
+ for(let i=0;i<CFB_TOP30.length;i++){
+  const key=cfbNorm(CFB_TOP30[i]),aliases=(CFB_ALIASES[key]||[]).map(cfbNorm);
+  if(t===key||aliases.some(a=>t===a||t.startsWith(a+" ")))return i+1;
+  if(key==="oregon"&&t.startsWith("oregon state "))continue;
+  if(key==="miami"&&t.startsWith("miami ohio"))continue;
+  if(key==="texas"&&t.startsWith("texas a m "))continue;
+  if(t.startsWith(key+" "))return i+1;
+ }
+ return null;
+}
+exports.importCfbOdds=onRequest({region:"us-central1",secrets:[oddsKey],timeoutSeconds:120,maxInstances:1,cors:["https://saintjt-coder.github.io"]},async(req,res)=>{
+ if(req.method!=="POST")return res.status(405).json({error:"POST required"});
+ const token=/^Bearer (.+)$/.exec(req.get("Authorization")||"")?.[1];
+ if(!token)return res.status(401).json({error:"Authentication required"});
+ let decoded;try{decoded=await admin.auth().verifyIdToken(token,true)}catch{return res.status(401).json({error:"Invalid token"})}
+ if(decoded.oddsImporter!==true)return res.status(403).json({error:"Importer permission required"});
+ try{
+  const key=oddsKey.value();
+  const odds=await getJSON("/sports/americanfootball_ncaaf/odds?regions=us&markets=h2h,spreads,totals&oddsFormat=american",key);
+  let games=0,created=0,quotes=0;
+  for(const ev of odds){
+   if(Date.parse(ev.commence_time)<=Date.now())continue;
+   const homeRank=cfbRank(ev.home_team),awayRank=cfbRank(ev.away_team);
+   if(!homeRank&&!awayRank)continue;
+   games++;
+   const markets=new Map();
+   for(const book of ev.bookmakers||[])for(const market of book.markets||[]){
+    if(!["h2h","spreads","totals"].includes(market.key))continue;
+    for(const o of market.outcomes||[]){
+     const price=Number(o.price),point=o.point==null?null:Number(o.point);
+     if(!Number.isFinite(price)||(point!==null&&!Number.isFinite(point)))continue;
+     const k=market.key+"|"+o.name,old=markets.get(k);
+     if(!old||priority(book.key)<priority(old.bookmaker)){
+      markets.set(k,{name:o.name,point,price,bookmaker:book.key});
+     }
+     quotes++;
+    }
+   }
+   const get=(market,name)=>markets.get(market+"|"+name);
+   const decimal=price=>Number((price>0?1+price/100:1+100/Math.abs(price)).toFixed(3));
+   const fmt=x=>x.name+(x.point==null?"":" "+(x.point>0?"+":"")+x.point);
+   for(const market of ["h2h","spreads","totals"]){
+    const a=get(market,market==="totals"?"Over":ev.home_team);
+    const b=get(market,market==="totals"?"Under":ev.away_team);
+    if(!a||!b)continue;
+    const label={h2h:"Moneyline",spreads:"Spread",totals:"Total Points"}[market];
+    const ref=admin.firestore().collection("players").doc("oddsapi-cfb-"+hash([ev.id,market].join("|")));
+    try{
+     await ref.create({kind:"team",game:"CFB",title:clean(ev.away_team)+" @ "+clean(ev.home_team)+" · "+label,
+      aLabel:fmt(a),bLabel:fmt(b),aMult:decimal(a.price),bMult:decimal(b.price),
+      status:"upcoming",result:null,source:"the-odds-api",eventId:clean(ev.id),
+      commenceTime:ev.commence_time,bookmakerA:a.bookmaker,bookmakerB:b.bookmaker,
+      americanOddsA:a.price,americanOddsB:b.price,homeRank,awayRank,
+      pollDate:CFB_POLL_DATE,importedAt:admin.firestore.FieldValue.serverTimestamp()});
+     created++;
+    }catch(e){if(e.code!==6&&e.code!=="already-exists")throw e}
+   }
+  }
+  res.json({ok:true,games,created,quotes,pollDate:CFB_POLL_DATE,rankedTeams:CFB_TOP30.length});
+ }catch(e){console.error("CFB odds import failed",e);res.status(502).json({error:"CFB import failed; verify API key coverage and Cloud Functions logs"})}
+});
+
+const {onRequest: pushRequest}=require("firebase-functions/v2/https");
+exports.registerPushDevice=pushRequest({region:"us-central1",cors:["https://saintjt-coder.github.io"],maxInstances:2},async(req,res)=>{
+ if(req.method!=="POST")return res.status(405).json({error:"POST required"});
+ const match=/^Bearer (.+)$/.exec(req.get("Authorization")||"");
+ if(!match)return res.status(401).json({error:"Authentication required"});
+ let user;try{user=await admin.auth().verifyIdToken(match[1],true)}catch{return res.status(401).json({error:"Invalid token"})}
+ const token=req.body?.token,enabled=req.body?.enabled;
+ if(typeof token!=="string"||token.length<40||token.length>4096||typeof enabled!=="boolean")return res.status(400).json({error:"Invalid device registration"});
+ const id=hash(token);
+ const ref=admin.firestore().collection("pushDevices").doc(id);
+ if(enabled){
+  const previous=await ref.get();
+  if(previous.exists&&previous.data().uid!==user.uid)return res.status(409).json({error:"Device registered to another account"});
+  await ref.set({uid:user.uid,token,enabled:true,platform:"ios-web",updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+ }else{
+  const previous=await ref.get();
+  if(previous.exists&&previous.data().uid===user.uid)await ref.delete();
+ }
+ return res.json({ok:true});
+});
+
+exports.sendTestPush=pushRequest({region:"us-central1",cors:["https://saintjt-coder.github.io"],maxInstances:2},async(req,res)=>{
+ if(req.method!=="POST")return res.status(405).json({error:"POST required"});
+ const match=/^Bearer (.+)$/.exec(req.get("Authorization")||"");
+ if(!match)return res.status(401).json({error:"Authentication required"});
+ let user;try{user=await admin.auth().verifyIdToken(match[1],true)}catch{return res.status(401).json({error:"Invalid token"})}
+ const docs=await admin.firestore().collection("pushDevices").where("uid","==",user.uid).where("enabled","==",true).limit(10).get();
+ if(docs.empty)return res.status(404).json({error:"No enabled devices found"});
+ const results=await Promise.all(docs.docs.map(async doc=>{
+  try{
+   await admin.messaging().send({token:doc.data().token,notification:{title:"PickSlip test notification 🔔",body:"Your iPhone is ready for PickSlip alerts!"},webpush:{notification:{icon:"https://saintjt-coder.github.io/my-artifact-site/preview/icon-192.png"},fcmOptions:{link:"https://saintjt-coder.github.io/my-artifact-site/preview/"}}});
+   return true;
+  }catch(e){
+   console.error("Test push failed",e.code||e.message);
+   if(["messaging/registration-token-not-registered","messaging/invalid-registration-token"].includes(e.code))await doc.ref.delete();
+   return false;
+  }
+ }));
+ const sent=results.filter(Boolean).length;
+ return res.status(sent?200:502).json({ok:sent>0,sent,attempted:results.length});
+});
+
+const {onSchedule}=require("firebase-functions/v2/scheduler");
+async function sendPickslipBroadcast(title,body){
+ const db=admin.firestore();let last=null,sent=0,failed=0;
+ while(true){
+  let q=db.collection("pushDevices").where("enabled","==",true).orderBy(admin.firestore.FieldPath.documentId()).limit(300);
+  if(last)q=q.startAfter(last);
+  const snap=await q.get();if(snap.empty)break;
+  const messages=snap.docs.map(d=>({token:d.data().token,notification:{title,body},webpush:{fcmOptions:{link:"https://saintjt-coder.github.io/my-artifact-site/preview/"}}}));
+  const result=await admin.messaging().sendEach(messages);
+  sent+=result.successCount;failed+=result.failureCount;
+  const removals=[];
+  result.responses.forEach((response,i)=>{
+   if(!response.success&&["messaging/registration-token-not-registered","messaging/invalid-registration-token"].includes(response.error?.code))removals.push(snap.docs[i].ref.delete());
+  });
+  await Promise.all(removals);
+  last=snap.docs[snap.docs.length-1];
+  if(snap.size<300)break;
+ }
+ console.log("Push broadcast result",{sent,failed});
+}
+async function scheduledNflPush(kind){
+ const now=new Date();
+ const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(now);
+ const part=k=>parts.find(x=>x.type===k)?.value;
+ const day=part("year")+"-"+part("month")+"-"+part("day");
+ const eventList=await getJSON("/sports/americanfootball_nfl/events",oddsKey.value());
+ const matches=eventList.some(e=>{
+  const t=new Date(e.commence_time);
+  if(!Number.isFinite(t.getTime()))return false;
+  const local=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(t);
+  const v=k=>local.find(x=>x.type===k)?.value;
+  const date=v("year")+"-"+v("month")+"-"+v("day");
+  return date===day&&(kind==="sunday"?v("hour")==="10"&&v("minute")==="00":true);
+ });
+ if(!matches){console.log("No matching NFL games",kind,day);return}
+ const id=kind+"-"+day,ref=admin.firestore().collection("pushBroadcasts").doc(id);
+ try{await ref.create({kind,day,startedAt:admin.firestore.FieldValue.serverTimestamp()})}
+ catch(e){if(e.code===6||e.code==="already-exists"){console.log("Broadcast already started",id);return}throw e}
+ const title=kind==="sunday"?"PickSlip NFL Sunday 🏈":"Monday Night Football 🏈";
+ const body=kind==="sunday"?"Games starting soon!🚨 Place your picks now on PickSlip✅":"Monday night football is here! Are you taking the Underdog or the Favorite⁉️";
+ await sendPickslipBroadcast(title,body);
+}
+exports.sundayNflReminder=onSchedule({schedule:"30 9 * * 0",timeZone:"America/Los_Angeles",region:"us-central1",secrets:[oddsKey],timeoutSeconds:540},async()=>scheduledNflPush("sunday"));
+exports.mondayNflReminder=onSchedule({schedule:"0 16 * * 1",timeZone:"America/Los_Angeles",region:"us-central1",secrets:[oddsKey],timeoutSeconds:540},async()=>scheduledNflPush("monday"));
+
+const {onDocumentUpdated}=require("firebase-functions/v2/firestore");
+const WIN_PAY={p2:3,p3:5,p4:10,p5:20,p6:37.5,f3_3:2.25,f3_2:1.25,f4_4:5,f4_3:1.5,f5_5:10,f5_4:2,f6_6:25,f6_5:2,f6_4:0.4};
+function slipOutcome(e,playerData){
+ if(!Array.isArray(e.picks)||!e.picks.length||!Number.isFinite(Number(e.amt)))return null;
+ const states=e.picks.map(p=>{
+  const pl=playerData[p.pid];
+  if(!pl)return "void";
+  if(pl.spoiled&&p.promo==="taco")return "push";
+  if(p.side)return pl.status==="final"&&pl.result?(pl.result==="void"?"push":pl.result===p.side?"hit":"miss"):"open";
+  if(pl.status!=="final"||pl.current==null)return "open";
+  const actual=Number(pl.current),line=Number(p.line);
+  if(!Number.isFinite(actual)||!Number.isFinite(line))return "open";
+  return actual===line?"push":((p.dir==="more"?actual>line:actual<line)?"hit":"miss");
+ });
+ if(states.includes("open"))return null;
+ const active=e.picks.filter((p,i)=>states[i]==="hit"||states[i]==="miss");
+ const hits=states.filter(x=>x==="hit").length,n=active.length,amt=Number(e.amt);
+ let won;
+ if(e.type==="team")won=n===0?amt:hits<n?0:amt*active.reduce((m,p)=>m*Number(p.mult),1);
+ else if(n<2)won=amt;
+ else{
+  const pay=e.pay||WIN_PAY,base=e.mode==="power"||n<3?(hits===n?Number(pay["p"+n]||0):0):Number(pay["f"+n+"_"+hits]||0);
+  won=base>0?amt*base*Number(e.pmul||1)*Number(e.bst||1):0;
+ }
+ if(e.prot&&won===0)won=amt;
+ return Number.isFinite(won)?Math.max(0,won-amt):null;
+}
+exports.notifyWinningSlips=onDocumentUpdated({document:"players/{playerId}",region:"us-central1",timeoutSeconds:540,memory:"512MiB"},async event=>{
+ const before=event.data?.before?.data(),after=event.data?.after?.data();
+ if(!before||!after||JSON.stringify(before)===JSON.stringify(after))return;
+ const db=admin.firestore(),changedId=event.params.playerId;
+ const allPlayers=await db.collection("players").get();
+ const playerData={};allPlayers.forEach(doc=>playerData[doc.id]=doc.data());
+ playerData[changedId]=after;
+ const oldData={...playerData,[changedId]:before};
+ let last=null,notified=0;
+ while(true){
+  let query=db.collection("slips").orderBy(admin.firestore.FieldPath.documentId()).limit(100);
+  if(last)query=query.startAfter(last);
+  const page=await query.get();
+  if(page.empty)break;
+  for(const userDoc of page.docs){
+   const entries=userDoc.data().entries;
+   if(!Array.isArray(entries))continue;
+   for(const entry of entries){
+    if(!entry?.id||!entry.picks?.some(p=>p.pid===changedId))continue;
+    const profit=slipOutcome(entry,playerData),previous=slipOutcome(entry,oldData);
+    if(!(profit>0)||previous!==null&&previous>0)continue;
+    const eventId=hash(userDoc.id+":"+entry.id);
+    const sentRef=db.collection("pushWinNotifications").doc(eventId);
+    try{await sentRef.create({uid:userDoc.id,slipId:entry.id,profit,createdAt:admin.firestore.FieldValue.serverTimestamp()})}
+    catch(e){if(e.code===6||e.code==="already-exists")continue;throw e}
+    const devices=await db.collection("pushDevices").where("uid","==",userDoc.id).where("enabled","==",true).limit(10).get();
+    if(devices.empty)continue;
+    const amount=profit.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+    const messages=devices.docs.map(d=>({token:d.data().token,notification:{title:"You won on PickSlip! 💰",body:"Congrats on the big win! You just won $"+amount+" 💰 Keep your winning streak going! Place a pick now!"},webpush:{fcmOptions:{link:"https://saintjt-coder.github.io/my-artifact-site/preview/"}}}));
+    const result=await admin.messaging().sendEach(messages);
+    notified+=result.successCount;
+    await Promise.all(result.responses.map((v,i)=>!v.success&&["messaging/registration-token-not-registered","messaging/invalid-registration-token"].includes(v.error?.code)?devices.docs[i].ref.delete():Promise.resolve()));
+   }
+  }
+  last=page.docs[page.docs.length-1];
+  if(page.size<100)break;
+ }
+ console.log("Winning slip notification results",{playerId:changedId,notified});
+});
