@@ -102,7 +102,7 @@ function redesignedBoard(){
  const T=bsub==="teams",games=["NFL","NBA","MLB","All",...GAMES.filter(g=>!["NFL","NBA","MLB"].includes(g))];
  $("main").innerHTML=`<div class="rd-sports"><button class="rd-search" data-sq="1" aria-label="Search">${IC.search}</button>${games.map(g=>`<button class="rd-sport ${gf===g?"active":""}" data-gf="${esc(g)}">${gl(g)}</button>`).join("")}</div>
  ${sq?`<div class="search"><input id="q" placeholder="Search players, teams or props" value="${esc(q)}" autocomplete="off"></div>`:""}
- ${admin?`<details class="rd-admin"><summary>Admin tools</summary><div class="tools"><button class="pill on" id="add">+ Player</button><button class="pill on" id="addt">+ Team pick</button><button class="pill" id="odds">Payout odds</button><button class="pill" id="colors">Team colors</button><button class="pill" id="vbteams">VBall teams</button><button class="pill on" id="promos">Manage promos</button><button class="pill on" data-rdbalances="1">Edit balances</button><button class="pill on" id="nflimp">Import NFL props</button></div></details>`:""}
+ ${admin?`<details class="rd-admin"><summary>Admin tools</summary><div class="tools"><button class="pill on" id="add">+ Player</button><button class="pill on" id="addt">+ Team pick</button><button class="pill" id="odds">Payout odds</button><button class="pill" id="colors">Team colors</button><button class="pill" id="vbteams">VBall teams</button><button class="pill on" id="promos">Manage promos</button><button class="pill on" data-rdbalances="1">Edit balances</button><button class="pill on" id="nflimp">Import NFL props</button><button class="pill on" data-rdnba="1">Import NBA odds</button></div></details>`:""}
  ${rdPromoBanner()}${rdFilters()}<div class="rd-section"><h2 class="sec">${gf==="All"?(T?"Team Picks":"All Picks"):esc(gf)+" Picks"}</h2></div>${admin?hideRow(T):""}<div id="cards"></div>`;
  fillCards();
 }
@@ -206,4 +206,26 @@ document.addEventListener("click",e=>{
  const b=e.target.closest("button");if(!b)return;
  if(b.dataset.rdbalances){e.stopImmediatePropagation();rdBalanceEditor()}
  if(b.dataset.rdeditbal){e.stopImmediatePropagation();rdEditBalance(b.dataset.rdeditbal)}
+},true);
+
+document.addEventListener("click",e=>{
+ const b=e.target.closest("button");if(!b||!b.dataset.rdnba)return;
+ e.stopImmediatePropagation();
+ if(!admin||!db)return;
+ $("panel").innerHTML='<div class="rd-sheet-handle"></div><button class="rd-close" data-closepanel="1">×</button><h2>Import NBA odds</h2><p class="rd-note">Fetch current NBA player props and team moneyline, spreads and totals. Points and rebounds receive +1 on top of the sportsbook line. Only new picks are created; existing scores and lines are preserved. Starter status is unverified.</p><button class="rd-opt" data-rdnbafetch="1">Fetch NBA Odds</button><p class="rd-note" id="rdnbaresult" role="status"></p>';
+ $("sheet").classList.add("open");
+},true);
+document.addEventListener("click",async e=>{
+ const b=e.target.closest("button");if(!b||!b.dataset.rdnbafetch)return;
+ e.stopImmediatePropagation();
+ if(!admin||!db)return;
+ b.disabled=true;const msg=$("rdnbaresult");msg.textContent="Importing NBA odds…";
+ try{
+  const user=firebase.auth().currentUser;if(!user)throw Error("Sign in required");
+  const token=await user.getIdToken(true);
+  const res=await fetch("https://us-central1-pickslip-4e265.cloudfunctions.net/importNbaOdds",{method:"POST",headers:{"Authorization":"Bearer "+token}});
+  const data=await res.json();if(!res.ok||!data.ok)throw Error(data.error||"Import failed");
+  msg.textContent="Imported "+data.playerCreated+" new player picks and "+data.teamCreated+" new team picks from "+data.events+" games. Existing picks preserved.";
+ }catch(err){msg.textContent="Import failed: "+err.message+". Check that importNbaOdds is deployed and your account has oddsImporter permission."}
+ finally{b.disabled=false}
 },true);
