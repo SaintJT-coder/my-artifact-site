@@ -20,6 +20,7 @@ function rdPromoList(){
  if(promo.flexfri&&now.getDay()===5)add("flexfri","🔥","Flex Friday",`Flex payout boost of ${Math.round((promo.fboost-1)*100)}%.`);
  if(promo.boostOn)add("boost","⚡","Payout boost",`${promo.boostPct}% boost for eligible picks.`);
  (promo.events||[]).forEach((ev,i)=>{if(ev.from&&ev.to&&ev.from<=t&&ev.to>=t){const d=new Date(ev.from+"T00:00:00");if(!isNaN(d))add("event-"+i,"🎉",ev.title,`${ev.pct}% payout boost.`,d.getTime())}});
+ if(promo.taco&&now.getDay()===2&&Object.values(players).some(p=>p.promo==="taco")){} 
  return o;
 }
 function rdClock(ms){const s=Math.max(0,Math.ceil(ms/1000));return [Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(n=>String(n).padStart(2,"0")).join(":")}
@@ -102,7 +103,7 @@ function redesignedBoard(){
  $("main").innerHTML=`<div class="rd-sports"><button class="rd-search" data-sq="1" aria-label="Search">${IC.search}</button>${games.map(g=>`<button class="rd-sport ${gf===g?"active":""}" data-gf="${esc(g)}">${gl(g)}</button>`).join("")}</div>
  ${sq?`<div class="search"><input id="q" placeholder="Search players, teams or props" value="${esc(q)}" autocomplete="off"></div>`:""}
  ${admin?`<details class="rd-admin"><summary>Admin tools</summary><div class="tools"><button class="pill on" id="add">+ Player</button><button class="pill on" id="addt">+ Team pick</button><button class="pill" id="odds">Payout odds</button><button class="pill" id="colors">Team colors</button><button class="pill" id="vbteams">VBall teams</button><button class="pill on" id="promos">Manage promos</button><button class="pill on" id="nflimp">Import NFL props</button></div></details>`:""}
- ${rdPromoBanner()}${rdFilters()}<div class="rd-section"><h2 class="sec">${gf==="All"?(T?"Team Picks":"All Picks"):esc(gf)+" Picks"}</h2></div>${hideRow(T)}<div id="cards"></div>`;
+ ${rdPromoBanner()}${rdFilters()}<div class="rd-section"><h2 class="sec">${gf==="All"?(T?"Team Picks":"All Picks"):esc(gf)+" Picks"}</h2></div>${admin?hideRow(T):""}<div id="cards"></div>`;
  fillCards();
 }
 function rdCard(id,p){
@@ -121,7 +122,7 @@ function rdCard(id,p){
 function redesignedFillCards(){
  const ids=Object.keys(players).filter(id=>{
   const p=players[id];
-  return !isTeam(p)&&(gf==="All"||p.game===gf)&&!(p.status==="final"&&hid[id]&&!showHid)&&(gf!=="NFL"||((wf==="All"||String(p.week)===wf)&&(sf==="All"||p.stat===sf)))&&(!q||[p.name,p.team,p.stat,p.pos,p.opp].join(" ").toLowerCase().includes(q.trim().toLowerCase()));
+  return !isTeam(p)&&(gf==="All"||p.game===gf)&&!(p.status==="final"&&(!admin||(hid[id]&&!showHid)))&&(gf!=="NFL"||((wf==="All"||String(p.week)===wf)&&(sf==="All"||p.stat===sf)))&&(!q||[p.name,p.team,p.stat,p.pos,p.opp].join(" ").toLowerCase().includes(q.trim().toLowerCase()));
  });
  ids.sort((a,b)=>{
  const x=players[a],y=players[b];return (y.status==="upcoming")-(x.status==="upcoming")||(x.week||999)-(y.week||999)||String(x.name||"").localeCompare(String(y.name||""))||String(x.stat||"").localeCompare(String(y.stat||""));
