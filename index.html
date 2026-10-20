@@ -677,7 +677,7 @@ document.addEventListener("click",e=>{
   }
   else if(id==="promos")promoEditor();
   else if(id==="nflimp")nflEditor();
-  else if(id==="cfbimp"){openSheet();$("panel").innerHTML=`<h2>Import CFB Passing Yards</h2><p class="note">Verified DraftKings passing-yard lines for the top 30 FBS QBs, ranked through Oct 17, 2026. Missing lines are skipped. Existing picks are never overwritten.</p><button class="cta" id="cfbfetch">Fetch DraftKings CFB Lines</button><div class="note" id="cfbfetchstatus" role="status">Only verified DraftKings Over/Under lines will be imported.</div>`;}
+  else if(id==="cfbimp"){$("sheet").classList.add("open");$("panel").innerHTML=`<h2>Import CFB Passing Yards</h2><p class="note">Verified DraftKings passing-yard lines for the top 30 FBS QBs, ranked through Oct 17, 2026. Missing lines are skipped. Existing picks are never overwritten.</p><button class="cta" id="cfbfetch">Fetch DraftKings CFB Lines</button><div class="note" id="cfbfetchstatus" role="status">Only verified DraftKings Over/Under lines will be imported.</div>`;}
   else if(id==="savepr"){
     const g=k=>$(k).value,nn=k=>parseFloat($(k).value);
     const ev=(g("pr-ev")||"").split("\n").map(l=>l.split("|").map(x=>x.trim())).filter(a=>a[0]&&a[1]&&a[2]).map(a=>({id:slug(a[0]+a[1]),title:a[0],from:a[1],to:a[2],pct:parseFloat(a[3])||0,game:a[4]||"All"}));
