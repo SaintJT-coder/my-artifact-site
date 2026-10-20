@@ -1,0 +1,9 @@
+{
+  "name": "PickSlip",
+  "short_name": "PickSlip",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#090A1B",
+  "theme_color": "#090A1B"
+}
