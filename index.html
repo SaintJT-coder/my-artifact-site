@@ -151,7 +151,6 @@ input,select,textarea{width:100%;border:1px solid var(--line);background:var(--c
 <nav class="tabbar" id="tabbar"></nav>
 <div id="toast" role="status"></div>
 <div class="sheet" id="sheet"><div class="panel" id="panel"></div></div>
-<script src="pickslip-redesign.js?v=1"></script>
 <script>
 const DEF={p2:3,p3:5,p4:10,p5:20,p6:37.5,f3_3:2.25,f3_2:1.25,f4_4:5,f4_3:1.5,f5_5:10,f5_4:2,f5_3:0.4,f6_6:25,f6_5:2,f6_4:0.4};
 const PDEF={taco:true,flexfri:true,fboost:1.4,prot:true,boostOn:false,boostPct:25,boostGame:"All",demon:1.5,goblin:0.75,guar:1,spinTok:0.1,events:[],challenges:[],grants:{}};
@@ -784,6 +783,7 @@ document.addEventListener("click",e=>{
   }catch(err){status="Unavailable";render()}
 })();
 </script>
+<script src="pickslip-redesign.js?v=2"></script>
 <script>
 (function(){
   const t=setInterval(()=>{
