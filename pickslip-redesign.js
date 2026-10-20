@@ -136,3 +136,22 @@ function rdShowDetail(id,stat){
  $("sheet").classList.add("open");rdApplyPhotos();
 }
 document.addEventListener("change",e=>{if(e.target.id==="rd-week"){wf=e.target.value;render()}else if(e.target.id==="rd-stat"){sf=e.target.value;render()}});
+
+/* Hook into the existing renderer; keep all Firestore and slip settlement code unchanged. */
+board=redesignedBoard;
+const rdOriginalFillCards=fillCards;
+fillCards=function(){if(bsub==="teams")return rdOriginalFillCards();return redesignedFillCards()};
+document.addEventListener("click",e=>{
+ const button=e.target.closest("button");
+ if(!button)return;
+ if(button.dataset.rddetail){e.stopImmediatePropagation();rdShowDetail(button.dataset.rddetail);return}
+ if(button.dataset.rdstat){e.stopImmediatePropagation();if(rdDetailId)rdShowDetail(rdDetailId,button.dataset.rdstat);return}
+ if(button.dataset.promobox){e.stopImmediatePropagation();rdShowPromos();return}
+ if(button.dataset.closepanel){e.stopImmediatePropagation();$("sheet").classList.remove("open");return}
+ if(button.dataset.optpromo){
+  e.stopImmediatePropagation();rdOptIn=!rdOptIn;window.pickslipPromoOptIn=rdOptIn;
+  try{localStorage.setItem("pickslip-promos-optin",rdOptIn?"yes":"no")}catch(err){}
+  rdShowPromos();return;
+ }
+ if(button.dataset.rdreset){e.stopImmediatePropagation();wf="All";sf="All";render();return}
+},true);
