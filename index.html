@@ -510,8 +510,8 @@ function promoEditor(){
   <b style="display:block;margin-top:18px">Give free entries (giveaway)</b><select id="gr-u">${us.map(i=>`<option value="${esc(i)}">${esc(names[i])}</option>`).join("")}</select>${field("gr-n","How many",1,'type="number" min="1"')}<button class="cta" id="grant" style="margin-top:8px">Give</button>`;
   $("sheet").classList.add("open");
 }
-const NFLS={"Rushing Yards":["QB","RB"],"Receiving Yards":["RB","WR"],"Passing Yards":["QB"],"Rushing TDs":["QB","RB","WR"],"Receiving TDs":["QB","RB","WR"],"Passing TDs":["QB"]},NFLCAP={RB:20,WR:30,QB:30},ADD5=["Rushing Yards","Receiving Yards"];
-function normStat(x){x=String(x||"").toLowerCase();const k=/rush/.test(x)?"Rushing":/rec/.test(x)?"Receiving":/pass/.test(x)?"Passing":"";return k?k+(/td|touchdown/.test(x)?" TDs":" Yards"):""}
+const NFLS={"Rushing Yards":["QB","RB"],"Rushing Attempts":["QB","RB"],"Receiving Yards":["RB","WR","TE"],"Receptions":["RB","WR","TE"],"Passing Yards":["QB"],"Passing Attempts":["QB"],"Passing Completions":["QB"],"Interceptions":["QB"],"Rushing TDs":["QB","RB","WR"],"Receiving TDs":["QB","RB","WR","TE"],"Passing TDs":["QB"]},NFLCAP={RB:20,WR:30,QB:30,TE:30},ADD5=["Rushing Yards","Receiving Yards"];
+function normStat(x){x=String(x||"").toLowerCase().trim();if(/interception|^ints?$/.test(x))return "Interceptions";if(/reception|^catches$/.test(x))return "Receptions";const k=/rush/.test(x)?"Rushing":/receiv/.test(x)?"Receiving":/pass/.test(x)?"Passing":"";if(!k)return "";if(/td|touchdown/.test(x))return k+" TDs";if(/attempt|carr(y|ies)/.test(x))return k+" Attempts";if(/complet/.test(x))return "Passing Completions";return k+" Yards"}
 function nflParse(txt){
   const rows=[],errs=[],seen={RB:new Set(),WR:new Set(),QB:new Set()};
   txt.split(/\r?\n/).forEach((ln,i)=>{
