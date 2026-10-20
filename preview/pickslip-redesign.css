@@ -112,3 +112,20 @@ header{padding:12px 16px 8px;background:var(--bg)}
 .rd-opt{width:100%;background:#36e990;color:#052a17;border:0;border-radius:12px;padding:14px;font-weight:800;font-size:16px;margin-top:14px}
 @media(min-width:600px){.rd-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.rd-media{height:126px}.rd-name{font-size:16px}.rd-promocard{max-width:780px}}
 @media(max-width:350px){.rd-grid{gap:7px;padding:0 9px}.rd-name{font-size:12px}.rd-sports{padding-left:9px}.rd-sport{padding:0 13px}.rd-prop-actions button{padding:10px 6px}}
+
+.rd-bar b{position:absolute;top:-17px;left:50%;transform:translateX(-50%);font-size:10px;line-height:1;color:#fff;white-space:nowrap}
+.rd-column b{position:static;display:block}
+.rd-column:has(.rd-bar) b{position:absolute;bottom:auto;top:-17px;transform:translateX(-50%);left:50%;display:block}
+.rd-card .hidebtn{position:absolute;top:6px;right:6px;z-index:5;font-size:10px;border-radius:8px;background:#0a1229dd}
+
+.rd-promoitem{gap:10px;align-items:center;transition:border-color .3s,background .3s}
+.rd-promo-info{flex:1;min-width:0}
+.rd-promo-timer{font-variant-numeric:tabular-nums;font-weight:800;font-size:19px;letter-spacing:1px;margin-top:9px}
+.rd-promo-green{border-color:#238b57;background:linear-gradient(110deg,#102a26,#111b30)}
+.rd-promo-green .rd-promo-timer{color:#39e397}
+.rd-promo-yellow{border-color:#b99525;background:linear-gradient(110deg,#302915,#111b30)}
+.rd-promo-yellow .rd-promo-timer{color:#ffcf48}
+.rd-promo-red{border-color:#c8444b;background:linear-gradient(110deg,#341b28,#111b30)}
+.rd-promo-red .rd-promo-timer{color:#ff626e}
+.rd-promo-claim{border:0;border-radius:9px;padding:10px 12px;background:#2769d9;color:white;font-size:12px;font-weight:800;white-space:nowrap}
+.rd-promo-claim:disabled{background:#263b40;color:#8be5b2;opacity:1}
