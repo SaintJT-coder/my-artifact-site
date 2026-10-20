@@ -71,6 +71,33 @@ function rdFetchRoster(team){
   rdCache.set(team,map);rdApplyPhotos();
  }).catch(()=>rdCache.set(team,new Map())).finally(()=>rdPending.delete(team));
 }
+const rdNbaHeads=new Map();
+let rdNbaRosterLoading=false;
+function rdNbaLoadHeads(){
+ if(rdNbaRosterLoading)return;
+ rdNbaRosterLoading=true;
+ const teams=["atl","bos","bkn","cha","chi","cle","dal","den","det","gs","hou","ind","lac","lal","mem","mia","mil","min","no","ny","okc","orl","phi","phx","por","sac","sa","tor","utah","wsh"];
+ // ESPN public roster data: cache once per page load; do not store images in Firestore.
+ const queue=teams.slice();
+ const worker=async()=>{
+  while(queue.length){
+   const team=queue.shift();
+   try{
+    const res=await fetch("https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/"+team+"/roster");
+    if(!res.ok)continue;
+    const data=await res.json();
+    const athletes=(data.athletes||[]).flatMap(a=>Array.isArray(a.items)?a.items:[a]);
+    for(const a of athletes){
+     const name=rdNorm(a.displayName||a.fullName),id=String(a.id||"");
+     if(!name||!/^\\d+$/.test(id))continue;
+     rdNbaHeads.set(name,a.headshot?.href||"https://a.espncdn.com/i/headshots/nba/players/full/"+id+".png");
+    }
+    rdApplyPhotos();
+   }catch(e){}
+  }
+ };
+ Promise.all(Array.from({length:5},worker)).then(rdApplyPhotos);
+}
 function rdHeadshot(p){
  let url=p.headshotUrl||p.photoUrl||p.imageUrl||p.headshot;
  if(typeof url==="object")url=url.href;
@@ -81,7 +108,7 @@ function rdHeadshot(p){
 }
 function rdApplyPhotos(){
  document.querySelectorAll("img[data-rd-player]").forEach(im=>{
-  const url=(rdCache.get(im.dataset.rdTeam)||new Map()).get(rdNorm(im.dataset.rdPlayer));
+  const url=im.dataset.rdSport==="NBA"?rdNbaHeads.get(rdNorm(im.dataset.rdPlayer)):(rdCache.get(im.dataset.rdTeam)||new Map()).get(rdNorm(im.dataset.rdPlayer));
   if(url&&!im.getAttribute("src"))im.src=url;
  });
 }
@@ -90,7 +117,7 @@ function rdPhoto(p,large){
  return `<div class="rd-photo ${large?"rd-photo-large":""}" style="--team:${esc(rdColor(p))}">
  <span class="rd-initial">${esc(ini(p.name||"?"))}</span>
  ${logo?`<img class="rd-logo" src="${esc(logo)}" loading="lazy" alt="" onerror="this.style.display='none'">`:""}
- <img class="rd-headshot" ${url?`src="${esc(url)}"`:""} data-rd-player="${esc(p.name)}" data-rd-team="${esc(team||"")}" alt="${esc(p.name)}" loading="lazy" onload="this.classList.add('ready')" onerror="this.classList.remove('ready');this.removeAttribute('src')">
+ <img class="rd-headshot" ${url?`src="${esc(url)}"`:""} data-rd-player="${esc(p.name)}" data-rd-sport="${esc(p.game||"NFL")}" data-rd-team="${esc(team||"")}" alt="${esc(p.name)}" loading="lazy" onload="this.classList.add('ready')" onerror="this.classList.remove('ready');this.removeAttribute('src')">
  </div>`;
 }
 function rdFilters(){
