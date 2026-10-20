@@ -13,6 +13,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#090A1B;--card:#14172E;--pill:#1C2040;--line:#2A2E4D;--ink:#fff;--mute:#9AA0C0;--acc:#2F6BFF;--accT:#fff;--green:#39E26B;--win:#39E26B;--lose:#FF5C6A;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -411,6 +412,7 @@ function profilePage(){
   const v=entries.map(evalEntry),set=v.filter(x=>x.done),wins=set.filter((x,i)=>x.won>0&&x.won!==entries.filter((e,j)=>v[j].done)[i].amt).length;
   $("main").innerHTML=`<div class="spinpg"><div class="sw" style="width:84px;height:84px;margin:12px auto;background:var(--acc);color:#fff;font-size:34px;font-weight:800">${admin?"A":"P"}</div><h2>${admin?"Admin":"Player"}</h2></div>
   <div class="stat"><div><b class="w">$${balance().toFixed(2)}</b><small>Balance</small></div><div><b>${entries.length}</b><small>Slips placed</small></div><div><b>${wins}</b><small>Slips won</small></div><div><b>$${spin.total||0}</b><small>Won from spins</small></div></div>
+  <h2 class="sec" style="margin-top:22px">Notifications</h2><div class="lb"><div class="row"><div><b>iPhone push alerts</b><small id="push-status">Install PickSlip to your Home Screen to enable alerts.</small></div><button class="pill on" id="push-toggle" onclick="window.pickslipTogglePush()">Enable</button></div></div>
   ${walletHTML()}<h2 class="sec" style="margin-top:22px">Leaderboard</h2><div class="lb">${lbHTML()}</div>
   <p class="note">Play money only. Scores and odds are set by the board admin.</p><p class="note" style="word-break:break-all">Your ID: ${myId||"-"}</p>`;
 }
@@ -753,6 +755,59 @@ document.addEventListener("click",e=>{
   }
   else if(id==="rmp"){if(okEdit(d.id)&&confirm("Delete this? Slips using it will be voided."))write(async()=>{await db.doc("players/"+d.id).delete();delete picks[d.id];delete tpicks[d.id];$("sheet").classList.remove("open")})}
 });
+
+// iPhone Web Push: user gesture required; never request permission during startup.
+const PICKSLIP_VAPID_KEY="BLN6XGkjUXn0OIaDC1osshJ2Ruw0kraaF6W7n2jw46eqDY-VZ2W0FZEahaW-pwyQOU0MsP1ht3HqNx3cEJEe2nQ";
+const PICKSLIP_PUSH_ENDPOINT="https://us-central1-pickslip-4e265.cloudfunctions.net/registerPushDevice";
+let pushBusy=false;
+function pushSupported(){
+ return window.isSecureContext&&"serviceWorker" in navigator&&"Notification" in window&&window.firebase?.messaging?.isSupported?.();
+}
+function pushInstalled(){return window.matchMedia("(display-mode: standalone)").matches||navigator.standalone===true}
+function pushStatus(){
+ const el=document.getElementById("push-status"),btn=document.getElementById("push-toggle");
+ if(!el||!btn)return;
+ const enabled=localStorage.getItem("pickslip-push-enabled")==="1";
+ el.textContent=!pushInstalled()?"Open PickSlip from your iPhone Home Screen to enable notifications.":!pushSupported()?"Push notifications aren't supported on this device.":Notification.permission==="denied"?"Notifications blocked in iPhone Settings.":enabled?"Notifications enabled on this device.":"Get NFL reminders and winning-slip alerts.";
+ btn.textContent=enabled?"Disable":"Enable";
+ btn.disabled=pushBusy||!pushInstalled()||!pushSupported()||(!enabled&&Notification.permission==="denied");
+}
+async function pushRegister(enabled){
+ const auth=firebase.auth().currentUser;
+ if(!auth)throw Error("Sign in before enabling notifications");
+ const reg=await navigator.serviceWorker.register("firebase-messaging-sw.js",{scope:"./"});
+ const messaging=firebase.messaging();
+ let token="";
+ if(enabled){
+  const permission=await Notification.requestPermission();
+  if(permission!=="granted")throw Error("Notification permission wasn't granted");
+  token=await messaging.getToken({vapidKey:PICKSLIP_VAPID_KEY,serviceWorkerRegistration:reg});
+  if(!token)throw Error("No device token received");
+ }else{
+  token=localStorage.getItem("pickslip-push-token")||"";
+  if(!token)throw Error("No registered device token found");
+ }
+ const idToken=await auth.getIdToken();
+ const res=await fetch(PICKSLIP_PUSH_ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+idToken},body:JSON.stringify({token,enabled})});
+ if(!res.ok)throw Error("Device registration failed ("+res.status+")");
+ if(enabled){
+  localStorage.setItem("pickslip-push-token",token);
+  localStorage.setItem("pickslip-push-enabled","1");
+ }else{
+  await messaging.deleteToken().catch(()=>{});
+  localStorage.removeItem("pickslip-push-token");
+  localStorage.removeItem("pickslip-push-enabled");
+ }
+}
+window.pickslipTogglePush=async()=>{
+ if(pushBusy)return;
+ pushBusy=true;pushStatus();
+ try{await pushRegister(localStorage.getItem("pickslip-push-enabled")!=="1");alert("Notification preference saved.");}
+ catch(e){console.error("Push registration:",e);alert(e.message||"Unable to update notifications");}
+ finally{pushBusy=false;pushStatus()}
+};
+const pushObserve=new MutationObserver(()=>{if(document.getElementById("push-toggle"))pushStatus()});
+pushObserve.observe(document.getElementById("main"),{childList:true});
 
 (async()=>{
   render();
