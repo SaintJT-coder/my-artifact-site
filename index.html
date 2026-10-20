@@ -304,6 +304,7 @@ function nflFilters(T){
   return `<div class="pills" style="padding-bottom:0">${pl(wf,"wf","All","All weeks")}${wks.map(w=>pl(wf,"wf",String(w),"Wk "+w)).join("")}</div><div class="pills" style="padding-bottom:0">${pl(sf,"sf","All","All stats")}${sts.map(x=>pl(sf,"sf",x,x)).join("")}</div>`;
 }
 function hideRow(T){
+  if(!admin)return "";
   const fin=Object.keys(players).filter(i=>isTeam(players[i])===T&&players[i].status==="final"&&(gf==="All"||players[i].game===gf)),nh=fin.filter(i=>hid[i]).length,nv=fin.length-nh;
   if(!nv&&!nh)return"";
   return `<div class="pills" style="padding:0 16px 6px">${nv?`<button class="pill" data-hideall="1" style="padding:8px 14px;font-size:14px">Hide finished (${nv})</button>`:""}${nh?`<button class="pill ${showHid?"on":""}" data-showhid="1" style="padding:8px 14px;font-size:14px">${showHid?"Hide again":"Show hidden"} (${nh})</button>`:""}</div>`;
@@ -311,7 +312,7 @@ function hideRow(T){
 function fillCards(){return bsub==="teams"?legacyFillCards():redesignedFillCards()}
 function legacyFillCards(){
   const T=bsub==="teams",ql=q.trim().toLowerCase();
-  const ids=Object.keys(players).filter(id=>{const p=players[id];if(isTeam(p)!==T)return false;if(gf!=="All"&&p.game!==gf)return false;if(p.status==="final"&&hid[id]&&!showHid)return false;if(!T&&gf==="NFL"){if(wf!=="All"&&String(p.week)!==wf)return false;if(sf!=="All"&&p.stat!==sf)return false}return !ql||[p.name,p.team,p.aLabel,p.bLabel,p.title,p.stat,p.pos,p.opp].join(" ").toLowerCase().includes(ql)});
+  const ids=Object.keys(players).filter(id=>{const p=players[id];if(isTeam(p)!==T)return false;if(gf!=="All"&&p.game!==gf)return false;if(p.status==="final"&&(!admin||(hid[id]&&!showHid)))return false;if(!T&&gf==="NFL"){if(wf!=="All"&&String(p.week)!==wf)return false;if(sf!=="All"&&p.stat!==sf)return false}return !ql||[p.name,p.team,p.aLabel,p.bLabel,p.title,p.stat,p.pos,p.opp].join(" ").toLowerCase().includes(ql)});
   const wkOf=i=>+((players[i].title||"").match(/Wk (\d+)/)||[])[1]||999;
   ids.sort((x,y)=>(isVB(players[y].game)-isVB(players[x].game))||(wkOf(x)-wkOf(y))||((players[x].week||999)-(players[y].week||999))||(players[x].week&&players[y].week?String(players[x].name||"").localeCompare(players[y].name||"")||String(players[x].stat||"").localeCompare(players[y].stat||""):0));
   let lw=null;
@@ -591,8 +592,8 @@ document.addEventListener("click",e=>{
   else if(d.sq){sq=!sq;render();if(sq)setTimeout(()=>{const i=$("q");i&&i.focus()},0)}
   else if(d.cp){const i=d.cp.lastIndexOf("|"),u=d.cp.slice(0,i),id2=d.cp.slice(i+1),en=(allSlips[u]||[]).find(x=>x.id===id2);if(en)copySlip(en)}
   else if(d.hide){if(hid[d.hide])delete hid[d.hide];else hid[d.hide]=1;render()}
-  else if(d.hideall){const T=bsub==="teams";Object.keys(players).forEach(i=>{const q=players[i];if(isTeam(q)===T&&q.status==="final"&&(gf==="All"||q.game===gf))hid[i]=1});render();toast("Finished games hidden")}
-  else if(d.showhid){showHid=!showHid;render()}
+  else if(d.hideall){if(!admin)return;const T=bsub==="teams";Object.keys(players).forEach(i=>{const q=players[i];if(isTeam(q)===T&&q.status==="final"&&(gf==="All"||q.game===gf))hid[i]=1});render();toast("Finished games hidden")}
+  else if(d.showhid){if(!admin)return;showHid=!showHid;render()}
   else if(d.wf){wf=d.wf;render()}
   else if(d.sf){sf=d.sf;render()}
   else if(d.free){useFree=!useFree;slip()}
