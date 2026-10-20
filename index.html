@@ -149,6 +149,21 @@ input,select,textarea{width:100%;border:1px solid var(--line);background:var(--c
 .pchip{flex:none;font-size:13px;font-weight:700;padding:8px 12px;background:var(--pill);border-radius:20px;white-space:nowrap}
 </style>
 <link rel="stylesheet" href="pickslip-redesign.css?v=1">
+
+<style>
+#account-overlay{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.83);display:flex;align-items:center;justify-content:center;padding:18px}
+#account-dialog{position:relative;background:#10142c;border:1px solid #2a2e4d;border-radius:22px;padding:26px 20px;width:min(100%,420px);max-height:92dvh;overflow:auto;color:white;box-shadow:0 15px 50px #0008}
+#account-dialog h2{text-align:center;font-size:28px;margin:12px 0 4px}
+#account-dialog p{text-align:center;color:#9aa0c0;font-size:13px}
+#account-guest{display:block;margin-left:auto;border:0;background:none;color:#9aa0c0;font-size:12px;padding:4px}
+#account-tabs{display:flex;gap:8px;margin:20px 0}
+#account-tabs button{flex:1;border:1px solid #2a2e4d;background:#1c2040;padding:12px;border-radius:12px}
+#account-tabs button.active{background:#2f6bff;border-color:#2f6bff}
+#account-dialog input{margin:5px 0 10px}
+#account-error{color:#ff7680;font-size:13px;min-height:18px}
+#account-submit{width:100%;background:#2f6bff;border:0;border-radius:12px;padding:14px;font-weight:800}
+#account-forgot{border:0;background:none;color:#9aa0c0;width:100%;margin-top:12px}
+</style>
 </head>
 <body>
 <header><button class="brand" id="brand" aria-label="Switch between players and teams"><svg class="logo" viewBox="0 0 40 40"><path d="M6 6h24l4 6-8 22H6z" fill="#2F6BFF"/><path d="M14 26l6-14h8l-6 14z" fill="#fff" opacity=".92"/></svg><span id="bt">PLAYERS</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button><div class="bal"><span id="bal">…</span><button class="plus" id="getfree" aria-label="Free daily spin">+</button></div></header>
@@ -412,7 +427,7 @@ function profilePage(){
   const v=entries.map(evalEntry),set=v.filter(x=>x.done),wins=set.filter((x,i)=>x.won>0&&x.won!==entries.filter((e,j)=>v[j].done)[i].amt).length;
   $("main").innerHTML=`<div class="spinpg"><div class="sw" style="width:84px;height:84px;margin:12px auto;background:var(--acc);color:#fff;font-size:34px;font-weight:800">${admin?"A":"P"}</div><h2>${admin?"Admin":"Player"}</h2></div>
   <div class="stat"><div><b class="w">$${balance().toFixed(2)}</b><small>Balance</small></div><div><b>${entries.length}</b><small>Slips placed</small></div><div><b>${wins}</b><small>Slips won</small></div><div><b>$${spin.total||0}</b><small>Won from spins</small></div></div>
-  <h2 class="sec" style="margin-top:22px">Notifications</h2><div class="lb"><div class="row"><div><b>iPhone push alerts</b><small id="push-status">Install PickSlip to your Home Screen to enable alerts.</small></div><button class="pill on" id="push-toggle" onclick="window.pickslipTogglePush()">Enable</button><button class="pill" onclick="window.pickslipSendTestPush()">Send Test</button></div></div>
+  ${firebase.auth().currentUser?.isAnonymous?`<div class="lb" style="margin-top:18px"><button class="cta" onclick="window.pickslipOpenAccount()">Create Account / Log In</button><p class="note">Save your picks and access them on any device.</p></div>`:""}<h2 class="sec" style="margin-top:22px">Notifications</h2><div class="lb"><div class="row"><div><b>iPhone push alerts</b><small id="push-status">Install PickSlip to your Home Screen to enable alerts.</small></div><button class="pill on" id="push-toggle" onclick="window.pickslipTogglePush()">Enable</button><button class="pill" onclick="window.pickslipSendTestPush()">Send Test</button></div></div>
   ${walletHTML()}<h2 class="sec" style="margin-top:22px">Leaderboard</h2><div class="lb">${lbHTML()}</div>
   <p class="note">Play money only. Scores and odds are set by the board admin.</p><p class="note" style="word-break:break-all">Your ID: ${myId||"-"}</p>`;
 }
@@ -839,7 +854,7 @@ pushObserve.observe(document.getElementById("main"),{childList:true});
     await firebase.auth().setPersistence(
     firebase.auth.Auth.Persistence.LOCAL
 );
-    const cred=await firebase.auth().signInAnonymously();
+    const cred=firebase.auth().currentUser?{user:firebase.auth().currentUser}:await firebase.auth().signInAnonymously();
     db=firebase.firestore();
     myId=cred.user.uid;
     admin=!!cfg.adminUid&&myId===cfg.adminUid;
@@ -851,6 +866,7 @@ pushObserve.observe(document.getElementById("main"),{childList:true});
         await db.doc("profiles/"+myId).set({name:nm});
       }
     }catch(e){}
+    window.pickslipShowAccountOnStart?.();
     db.collection("players").onSnapshot(s=>{players={};s.docs.forEach(x=>players[x.id]=x.data());
       Object.keys(picks).forEach(k=>{const p=players[k];if(!p||isTeam(p)||p.status!=="upcoming"||p.line!==picks[k].line)delete picks[k]});
       Object.keys(tpicks).forEach(k=>{const p=players[k];if(!p||!isTeam(p)||p.status!=="upcoming")delete tpicks[k];else tpicks[k]=mkT(k,tpicks[k].side)});
@@ -871,6 +887,46 @@ pushObserve.observe(document.getElementById("main"),{childList:true});
     status="Connection failed — please reload";
     render();
   }
+})();
+</script>
+
+<script>
+(function(){
+ let firstShown=false, mode="login";
+ const auth=()=>firebase.auth();
+ function openAccount(){
+  if(document.getElementById("account-overlay"))return;
+  const overlay=document.createElement("div");overlay.id="account-overlay";
+  overlay.innerHTML='<div id="account-dialog" role="dialog" aria-modal="true" aria-label="PickSlip account"><button id="account-guest">just looking around →</button><h2>PickSlip</h2><p>Your picks. Your account. Any device.</p><div id="account-tabs"><button id="account-login" class="active">Log In</button><button id="account-create">Create Account</button></div><form id="account-form"><div id="account-username-wrap" hidden><label for="account-username">Username</label><input id="account-username" maxlength="20" autocomplete="nickname"></div><label for="account-email">Email</label><input id="account-email" type="email" required autocomplete="email"><label for="account-password">Password</label><input id="account-password" type="password" minlength="6" required autocomplete="current-password"><div id="account-error" role="alert"></div><button id="account-submit" type="submit">Log In</button></form><button id="account-forgot">Forgot password?</button></div>';
+  document.body.appendChild(overlay);
+  const el=id=>overlay.querySelector("#"+id);
+  function setMode(next){mode=next;el("account-login").classList.toggle("active",mode==="login");el("account-create").classList.toggle("active",mode==="create");el("account-username-wrap").hidden=mode!=="create";el("account-username").required=mode==="create";el("account-submit").textContent=mode==="create"?"Create Account":"Log In";el("account-forgot").hidden=mode!=="login";el("account-password").autocomplete=mode==="create"?"new-password":"current-password";el("account-error").textContent="";}
+  el("account-login").onclick=()=>setMode("login");
+  el("account-create").onclick=()=>setMode("create");
+  el("account-guest").onclick=()=>overlay.remove();
+  el("account-forgot").onclick=async()=>{const email=el("account-email").value.trim();if(!email){el("account-error").textContent="Enter your email first.";return;}try{await auth().sendPasswordResetEmail(email);el("account-error").style.color="#39e26b";el("account-error").textContent="If an account exists, check your email for reset instructions.";}catch(e){el("account-error").textContent=e.message;}};
+  el("account-form").onsubmit=async e=>{
+   e.preventDefault();el("account-error").style.color="#ff7680";el("account-error").textContent="";
+   const email=el("account-email").value.trim(),password=el("account-password").value,btn=el("account-submit");
+   btn.disabled=true;
+   try{
+    if(mode==="create"){
+     const user=auth().currentUser;
+     const credential=firebase.auth.EmailAuthProvider.credential(email,password);
+     const result=user?.isAnonymous?await user.linkWithCredential(credential):await auth().createUserWithEmailAndPassword(email,password);
+     const name=el("account-username").value.trim().slice(0,20);
+     if(name&&window.firebase.firestore)await firebase.firestore().doc("profiles/"+result.user.uid).set({name},{merge:true});
+    }else{
+     if(auth().currentUser?.isAnonymous&&!confirm("Logging in will switch to your existing account. Any picks in this guest account will not transfer. Continue?"))return;
+     await auth().signInWithEmailAndPassword(email,password);
+    }
+    if(typeof myId!=="undefined"&&myId!==auth().currentUser.uid){location.reload();return;}
+    overlay.remove();if(typeof render==="function")render();
+   }catch(err){el("account-error").textContent=err.message||"Unable to sign in.";}finally{btn.disabled=false;}
+  };
+ }
+ window.pickslipOpenAccount=openAccount;
+ window.pickslipShowAccountOnStart=function(){if(firstShown)return;firstShown=true;if(auth().currentUser?.isAnonymous)openAccount();};
 })();
 </script>
 <script src="pickslip-redesign.js?v=2"></script>
