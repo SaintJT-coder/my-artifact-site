@@ -198,7 +198,11 @@ function cfbRank(team){
  const t=cfbNorm(team);
  for(let i=0;i<CFB_TOP30.length;i++){
   const key=cfbNorm(CFB_TOP30[i]),aliases=(CFB_ALIASES[key]||[]).map(cfbNorm);
-  if(t===key||t.startsWith(key+" ")||aliases.some(a=>t===a||t.startsWith(a+" ")))return i+1;
+  if(t===key||aliases.some(a=>t===a||t.startsWith(a+" ")))return i+1;
+  if(key==="oregon"&&t.startsWith("oregon state "))continue;
+  if(key==="miami"&&t.startsWith("miami ohio"))continue;
+  if(key==="texas"&&t.startsWith("texas a m "))continue;
+  if(t.startsWith(key+" "))return i+1;
  }
  return null;
 }
