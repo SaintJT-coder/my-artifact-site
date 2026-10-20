@@ -80,8 +80,9 @@ function redesignedBoard(){
 function rdCard(id,p){
  const sel=picks[id]&&picks[id].dir,lock=p.status!=="upcoming";
  return `<article class="rd-card ${sel?"rd-selected":""}" style="--team:${esc(rdColor(p))}">
+ ${hideBtn(id,p)}
  <button class="rd-cardtap" data-rddetail="${esc(id)}" aria-label="Show ${esc(p.name)} past five games">
- <div class="rd-media">${rdPhoto(p)}<span class="rd-heart" aria-hidden="true">♡</span></div>
+ <div class="rd-media">${rdPhoto(p)}${p.status==="upcoming"?'<span class="rd-heart" aria-hidden="true">♡</span>':""}</div>
  <div class="rd-name">${esc(p.name)}</div><div class="rd-meta">${esc(p.pos||"NFL")} · ${esc(rdAbbr(p))}</div>
  <div class="rd-line">${p.baseLine!=null&&p.baseLine!==p.line?`<s>${esc(p.baseLine)}</s>`:""}${esc(p.line)}</div><div class="rd-stat">${esc(p.stat)}</div>
  ${lock?`<span class="rd-status">${badge(p)}</span>`:""}${pbadge(p)}
@@ -117,7 +118,7 @@ function rdDetailOptions(p){
 function rdChart(games,line){
  if(!games.length)return '<div class="rd-no-data">No individual game history imported for this stat yet.</div>';
  const mx=Math.max(1,line||0,...games.map(g=>g.value)),pct=v=>Math.max(2,Math.min(100,v/mx*100));
- return `<div class="rd-chart" role="img" aria-label="Game-by-game results versus current line ${esc(line)}"><div class="rd-guide" style="bottom:${pct(line)}%"><span>${esc(line)}</span></div>${games.map(g=>`<div class="rd-column"><b>${esc(g.value)}</b><div class="rd-bar ${g.value>line?"over":g.value<line?"under":"even"}" style="height:${pct(g.value)}%"></div><small>${esc(g.label)}</small></div>`).join("")}</div>`;
+ return `<div class="rd-chart" role="img" aria-label="Game-by-game results versus current line ${esc(line)}"><div class="rd-guide" style="bottom:${pct(line)}%"><span>${esc(line)}</span></div>${games.map(g=>`<div class="rd-column"><div class="rd-bar ${g.value>line?"over":g.value<line?"under":"even"}" style="height:${pct(g.value)}%"><b>${esc(g.value)}</b></div><small>${esc(g.label)}</small></div>`).join("")}</div>`;
 }
 function rdShowDetail(id,stat){
  const p=players[id];if(!p)return;rdDetailId=id;
