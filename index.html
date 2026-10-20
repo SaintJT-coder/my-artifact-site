@@ -862,7 +862,7 @@ pushObserve.observe(document.getElementById("main"),{childList:true});
     try{
       const me=await db.doc("profiles/"+myId).get();
       if(!me.exists){
-        let nm=(prompt("Pick a display name for the leaderboard:")||"").trim().slice(0,20)||"Friend";
+        let nm="Friend";
         await db.doc("profiles/"+myId).set({name:nm});
       }
     }catch(e){}
