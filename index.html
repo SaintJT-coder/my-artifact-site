@@ -9,7 +9,6 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#090A1B">
 <link rel="manifest" href="manifest.json">
-
 <script src="firebase-config.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
@@ -149,6 +148,7 @@ input,select,textarea{width:100%;border:1px solid var(--line);background:var(--c
 .hidebtn{position:absolute;top:8px;right:8px;z-index:2;border:0;background:rgba(0,0,0,.55);color:#fff;border-radius:14px;padding:5px 10px;font:700 12px inherit;font-family:inherit}
 .pchip{flex:none;font-size:13px;font-weight:700;padding:8px 12px;background:var(--pill);border-radius:20px;white-space:nowrap}
 </style>
+<link rel="stylesheet" href="pickslip-redesign.css?v=1">
 </head>
 <body>
 <header><button class="brand" id="brand" aria-label="Switch between players and teams"><svg class="logo" viewBox="0 0 40 40"><path d="M6 6h24l4 6-8 22H6z" fill="#2F6BFF"/><path d="M14 26l6-14h8l-6 14z" fill="#fff" opacity=".92"/></svg><span id="bt">PLAYERS</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button><div class="bal"><span id="bal">…</span><button class="plus" id="getfree" aria-label="Free daily spin">+</button></div></header>
@@ -162,7 +162,7 @@ const DEF={p2:3,p3:5,p4:10,p5:20,p6:37.5,f3_3:2.25,f3_2:1.25,f4_4:5,f4_3:1.5,f5_
 const PDEF={taco:true,flexfri:true,fboost:1.4,prot:true,boostOn:false,boostPct:25,boostGame:"All",demon:1.5,goblin:0.75,guar:1,spinTok:0.1,events:[],challenges:[],grants:{}};
 const FREEAMT=10,REFCAP=5;
 const FROWS=[[3,[3,2]],[4,[4,3]],[5,[5,4,3]],[6,[6,5,4]]];
-let db=null,admin=false,myId=null,players={},entries=[],payouts={...DEF},view="board",bsub="teams",bsubChosen=false,picks={},tpicks={},mode="power",amt=10,status="Connecting…",gf="All",sq=false,q="",esub="active",spin={total:0},gm={total:0},allGames={},gsub="spin",allSlips={},allSpins={},names={},U=null,spinning=false,wheelDeg=0,lastWin=0,lastTok=0,hid={},showHid=false,wf="All",sf="All",promo={...PDEF},allSpinD={},useFree=false,optFri=true;
+let db=null,admin=false,myId=null,players={},entries=[],payouts={...DEF},view="board",bsub="players",bsubChosen=false,picks={},tpicks={},mode="power",amt=10,status="Connecting…",gf="NFL",sq=false,q="",esub="active",spin={total:0},gm={total:0},allGames={},allGameD={},gsub="spin",allSlips={},allSpins={},names={},U=null,spinning=false,wheelDeg=0,lastWin=0,lastTok=0,hid={},showHid=false,wf="All",sf="All",promo={...PDEF},allSpinD={},useFree=false,optFri=true;
 const LS="pickslip-prefs";
 try{const v=JSON.parse(localStorage.getItem(LS)||"{}");if(v.picks&&typeof v.picks==="object")picks=v.picks;if(v.tpicks&&typeof v.tpicks==="object")tpicks=v.tpicks;if(v.mode==="flex")mode="flex";if([5,10,25,50].includes(v.amt))amt=v.amt;if(["board","entries","feed","spin","profile"].includes(v.view))view=v.view;if(v.bsubChosen&&(v.bsub==="teams"||v.bsub==="players")){bsub=v.bsub;bsubChosen=true};if(v.gf)gf=v.gf;if(v.hid&&typeof v.hid==="object")hid=v.hid;if(typeof v.wf==="string")wf=v.wf;if(typeof v.sf==="string")sf=v.sf}catch(e){}
 function savePrefs(){try{localStorage.setItem(LS,JSON.stringify({picks,tpicks,mode,amt,view,bsub,bsubChosen,gf,hid,wf,sf}))}catch(e){}}
@@ -205,14 +205,15 @@ const balFor=(ents,t)=>{let b=100+(t||0);ents.forEach(e=>{const v=evalEntry(e);i
 const slug=x=>String(x||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
 const dow=()=>new Date().getDay();
 const myDay=ts=>new Date(ts).toLocaleDateString("en-CA");
-const isFri=()=>!!promo.flexfri&&dow()===5;
+const isFri=()=>!!promo.flexfri&&dow()===5&&window.pickslipHasPromo?.("flexfri")===true;
 const SP=uid=>allSpinD[uid]||(uid===myId?spin:{});
-const protOK=()=>!!promo.prot&&!entries.some(e=>(e.day||myDay(e.ts))===today());
+const protOK=()=>!!promo.prot&&window.pickslipHasPromo?.("prot")===true&&!entries.some(e=>(e.day||myDay(e.ts))===today());
 const pmOf=p=>p.promo==="demon"?promo.demon:p.promo==="goblin"?promo.goblin:p.promo==="guarantee"?promo.guar:1;
 function boostFor(game){
+  if(typeof window.pickslipHasPromo!=="function")return 1;
   let b=1;const t=today();
-  if(promo.boostOn&&(!promo.boostGame||promo.boostGame==="All"||promo.boostGame===game))b=Math.max(b,1+promo.boostPct/100);
-  (promo.events||[]).forEach(ev=>{if(ev.from<=t&&t<=ev.to&&(!ev.game||ev.game==="All"||ev.game===game))b=Math.max(b,1+(ev.pct||0)/100)});
+  if(promo.boostOn&&window.pickslipHasPromo("boost")&&(!promo.boostGame||promo.boostGame==="All"||promo.boostGame===game))b=Math.max(b,1+promo.boostPct/100);
+  (promo.events||[]).forEach((ev,i)=>{if(window.pickslipHasPromo("event-"+i)&&ev.from<=t&&t<=ev.to&&(!ev.game||ev.game==="All"||ev.game===game))b=Math.max(b,1+(ev.pct||0)/100)});
   return b;
 }
 const inRange=(e,c)=>{const d=e.day||myDay(e.ts);return(!c.from||d>=c.from)&&(!c.to||d<=c.to)};
@@ -235,7 +236,7 @@ const l5H=p=>{
   const L=+p.line,mx=Math.max(...a,L,1);
   return `<div class="l5cap">Last ${a.length}</div><div class="l5"><u style="bottom:${(L/mx*40).toFixed(1)}px"></u>`+a.map(v=>`<i class="${v>L?"o":v<L?"u":""}" style="height:${Math.max(6,v/mx*40).toFixed(1)}px"><b>${v}</b></i>`).join("")+`</div>`;
 };
-function balance(){return balFor(entries,spin.total+gm.total)}
+function balance(){return balFor(entries,spin.total+gm.total)+(Number(gm.balanceAdjustment)||0)}
 function badge(pl){
   if(pl.status==="live")return `<span class="badge live">LIVE${!isTeam(pl)&&pl.current!=null?" · "+pl.current:""}</span>`;
   if(pl.status==="final")return `<span class="badge final">FINAL${isTeam(pl)?(pl.result==="void"?" · void":pl.result?" · "+esc(pl.result==="a"?pl.aLabel:pl.bLabel):""):" · "+pl.current}</span>`;
@@ -271,7 +272,7 @@ const today=()=>new Date().toLocaleDateString("en-CA");
 function render(){
   savePrefs();
   if(view==="spin"&&spinning)return;
-  $("bt").textContent=bsub==="teams"?"TEAMS":"PLAYERS";
+  $("bt").textContent="PICKSLIP";
   $("bal").textContent=db?"$ "+balance().toFixed(2):status;
   $("tabbar").innerHTML=[["board","Board"],["entries","My Entries"],["feed","Feed"],["spin","Play"],["profile","Profile"]].map(([k,l])=>`<button class="tb2 ${view===k?"on":""}" data-v="${k}">${IC[k]}${l}</button>`).join("");
   const cur=bsub==="teams"?tpicks:picks,n=Object.keys(cur).length,min=bsub==="teams"?1:2,sb=$("open");
@@ -279,7 +280,8 @@ function render(){
   if(!db){$("main").innerHTML=`<div class="empty">${esc(status)}<br>Open this page while signed in to claude.ai to see the board.</div>`;return}
   if(view==="spin"&&gsub!=="spin")gamePage();else ({board,entries:entriesPage,feed:feedPage,spin:spinPage,profile:profilePage})[view]();
 }
-function board(){
+function board(){return redesignedBoard()}
+function legacyBoard(){
   const T=bsub==="teams";
   $("main").innerHTML=`<div class="pills"><button class="pill ic ${sq?"on":""}" data-sq="1" aria-label="Search">${IC.search}</button>${["All",...GAMES].map(g=>`<button class="pill ${gf===g?"on":""}" data-gf="${esc(g)}">${gl(g)}</button>`).join("")}</div>
   ${sq?`<div class="search"><input id="q" placeholder="Search" value="${esc(q)}" autocomplete="off"></div>`:""}
@@ -308,13 +310,15 @@ function nflFilters(T){
   return `<div class="pills" style="padding-bottom:0">${pl(wf,"wf","All","All weeks")}${wks.map(w=>pl(wf,"wf",String(w),"Wk "+w)).join("")}</div><div class="pills" style="padding-bottom:0">${pl(sf,"sf","All","All stats")}${sts.map(x=>pl(sf,"sf",x,x)).join("")}</div>`;
 }
 function hideRow(T){
+  if(!admin)return "";
   const fin=Object.keys(players).filter(i=>isTeam(players[i])===T&&players[i].status==="final"&&(gf==="All"||players[i].game===gf)),nh=fin.filter(i=>hid[i]).length,nv=fin.length-nh;
   if(!nv&&!nh)return"";
   return `<div class="pills" style="padding:0 16px 6px">${nv?`<button class="pill" data-hideall="1" style="padding:8px 14px;font-size:14px">Hide finished (${nv})</button>`:""}${nh?`<button class="pill ${showHid?"on":""}" data-showhid="1" style="padding:8px 14px;font-size:14px">${showHid?"Hide again":"Show hidden"} (${nh})</button>`:""}</div>`;
 }
-function fillCards(){
+function fillCards(){return bsub==="teams"?legacyFillCards():redesignedFillCards()}
+function legacyFillCards(){
   const T=bsub==="teams",ql=q.trim().toLowerCase();
-  const ids=Object.keys(players).filter(id=>{const p=players[id];if(isTeam(p)!==T)return false;if(gf!=="All"&&p.game!==gf)return false;if(p.status==="final"&&hid[id]&&!showHid)return false;if(!T&&gf==="NFL"){if(wf!=="All"&&String(p.week)!==wf)return false;if(sf!=="All"&&p.stat!==sf)return false}return !ql||[p.name,p.team,p.aLabel,p.bLabel,p.title,p.stat,p.pos,p.opp].join(" ").toLowerCase().includes(ql)});
+  const ids=Object.keys(players).filter(id=>{const p=players[id];if(isTeam(p)!==T)return false;if(gf!=="All"&&p.game!==gf)return false;if(p.status==="final"&&(!admin||(hid[id]&&!showHid)))return false;if(!T&&gf==="NFL"){if(wf!=="All"&&String(p.week)!==wf)return false;if(sf!=="All"&&p.stat!==sf)return false}return !ql||[p.name,p.team,p.aLabel,p.bLabel,p.title,p.stat,p.pos,p.opp].join(" ").toLowerCase().includes(ql)});
   const wkOf=i=>+((players[i].title||"").match(/Wk (\d+)/)||[])[1]||999;
   ids.sort((x,y)=>(isVB(players[y].game)-isVB(players[x].game))||(wkOf(x)-wkOf(y))||((players[x].week||999)-(players[y].week||999))||(players[x].week&&players[y].week?String(players[x].name||"").localeCompare(players[y].name||"")||String(players[x].stat||"").localeCompare(players[y].stat||""):0));
   let lw=null;
@@ -420,7 +424,7 @@ function walletHTML(){
 }
 function lbHTML(){
   const ids=new Set([...Object.keys(allSlips),...Object.keys(allSpins),...Object.keys(allGames)]);if(myId)ids.add(myId);
-  const rows=[...ids].map(id=>({id,b:id===myId?balance():balFor(allSlips[id]||[],(allSpins[id]||0)+(allGames[id]||0))})).sort((a,b)=>b.b-a.b);
+  const rows=[...ids].map(id=>({id,b:id===myId?balance():balFor(allSlips[id]||[],(allSpins[id]||0)+(allGames[id]||0))+(Number(allGameD[id]?.balanceAdjustment)||0)})).sort((a,b)=>b.b-a.b);
   return rows.map((r,i)=>{const d=r.b-100;return `<div class="lbr ${r.id===myId?"me":""}"><span class="rk">${i+1}</span><span class="lbn">${esc(names[r.id]||"Friend")}${r.id===myId?" (you)":""}</span><span class="lbb" style="${r.b<0?"color:var(--lose)":""}">$${r.b.toFixed(2)}${r.b<0?" ⚠":""}</span><small class="${d>=0?"w":"l"}">${d>=0?"+":"−"}$${Math.abs(d).toFixed(2)}</small></div>`}).join("")||'<div class="empty">No one is on the board yet.</div>';
 }
 async function loadNames(){
@@ -514,8 +518,8 @@ function promoEditor(){
   <b style="display:block;margin-top:18px">Give free entries (giveaway)</b><select id="gr-u">${us.map(i=>`<option value="${esc(i)}">${esc(names[i])}</option>`).join("")}</select>${field("gr-n","How many",1,'type="number" min="1"')}<button class="cta" id="grant" style="margin-top:8px">Give</button>`;
   $("sheet").classList.add("open");
 }
-const NFLS={"Rushing Yards":["QB","RB"],"Receiving Yards":["RB","WR"],"Passing Yards":["QB"],"Rushing TDs":["QB","RB","WR"],"Receiving TDs":["QB","RB","WR"],"Passing TDs":["QB"]},NFLCAP={RB:20,WR:30,QB:30},ADD5=["Rushing Yards","Receiving Yards"];
-function normStat(x){x=String(x||"").toLowerCase();const k=/rush/.test(x)?"Rushing":/rec/.test(x)?"Receiving":/pass/.test(x)?"Passing":"";return k?k+(/td|touchdown/.test(x)?" TDs":" Yards"):""}
+const NFLS={"Rushing Yards":["QB","RB"],"Rushing Attempts":["QB","RB"],"Receiving Yards":["RB","WR","TE"],"Receptions":["RB","WR","TE"],"Passing Yards":["QB"],"Passing Attempts":["QB"],"Passing Completions":["QB"],"Interceptions":["QB"],"Rushing TDs":["QB","RB","WR"],"Receiving TDs":["QB","RB","WR","TE"],"Passing TDs":["QB"]},NFLCAP={RB:20,WR:30,QB:30,TE:30},ADD5=["Rushing Yards","Receiving Yards"];
+function normStat(x){x=String(x||"").toLowerCase().trim();if(/interception|^ints?$/.test(x))return "Interceptions";if(/reception|^catches$/.test(x))return "Receptions";const k=/rush/.test(x)?"Rushing":/receiv/.test(x)?"Receiving":/pass/.test(x)?"Passing":"";if(!k)return "";if(/td|touchdown/.test(x))return k+" TDs";if(/attempt|carr(y|ies)/.test(x))return k+" Attempts";if(/complet/.test(x))return "Passing Completions";return k+" Yards"}
 function nflParse(txt){
   const rows=[],errs=[],seen={RB:new Set(),WR:new Set(),QB:new Set()};
   txt.split(/\r?\n/).forEach((ln,i)=>{
@@ -583,14 +587,20 @@ document.addEventListener("click",e=>{
   const t=e.target.closest("button");
   if(!t){if(e.target.id==="sheet")$("sheet").classList.remove("open");return}
   const d=t.dataset,id=t.id;
-  if(d.v){view=d.v;render()}
+  if(d.rddetail){rdShowDetail(d.rddetail)}
+  else if(d.rdstat){if(rdDetailId)rdShowDetail(rdDetailId,d.rdstat)}
+  else if(d.promobox){rdShowPromos()}
+  else if(d.optpromo){rdOptIn=!rdOptIn;window.pickslipPromoOptIn=rdOptIn;try{localStorage.setItem("pickslip-promos-optin",rdOptIn?"yes":"no")}catch(e){}render();rdShowPromos();toast(rdOptIn?"Promotions opted in":"Promo opt-in turned off")}
+  else if(d.closepanel){$("sheet").classList.remove("open");rdDetailId=null}
+  else if(d.rdreset){wf="All";sf="All";render()}
+  else if(d.v){view=d.v;render()}
   else if(d.bs){bsub=d.bs;bsubChosen=true;$("sheet").classList.remove("open");render()}
   else if(d.gf){gf=d.gf;render()}
   else if(d.sq){sq=!sq;render();if(sq)setTimeout(()=>{const i=$("q");i&&i.focus()},0)}
   else if(d.cp){const i=d.cp.lastIndexOf("|"),u=d.cp.slice(0,i),id2=d.cp.slice(i+1),en=(allSlips[u]||[]).find(x=>x.id===id2);if(en)copySlip(en)}
   else if(d.hide){if(hid[d.hide])delete hid[d.hide];else hid[d.hide]=1;render()}
-  else if(d.hideall){const T=bsub==="teams";Object.keys(players).forEach(i=>{const q=players[i];if(isTeam(q)===T&&q.status==="final"&&(gf==="All"||q.game===gf))hid[i]=1});render();toast("Finished games hidden")}
-  else if(d.showhid){showHid=!showHid;render()}
+  else if(d.hideall){if(!admin)return;const T=bsub==="teams";Object.keys(players).forEach(i=>{const q=players[i];if(isTeam(q)===T&&q.status==="final"&&(gf==="All"||q.game===gf))hid[i]=1});render();toast("Finished games hidden")}
+  else if(d.showhid){if(!admin)return;showHid=!showHid;render()}
   else if(d.wf){wf=d.wf;render()}
   else if(d.sf){sf=d.sf;render()}
   else if(d.free){useFree=!useFree;slip()}
@@ -826,6 +836,9 @@ pushObserve.observe(document.getElementById("main"),{childList:true});
   try{
     const cfg=window.APP_CONFIG;if(!cfg||!window.firebase)throw 0;
     firebase.initializeApp(cfg.firebaseConfig);
+    await firebase.auth().setPersistence(
+    firebase.auth.Auth.Persistence.LOCAL
+);
     const cred=await firebase.auth().signInAnonymously();
     db=firebase.firestore();
     myId=cred.user.uid;
@@ -842,9 +855,9 @@ pushObserve.observe(document.getElementById("main"),{childList:true});
       Object.keys(picks).forEach(k=>{const p=players[k];if(!p||isTeam(p)||p.status!=="upcoming"||p.line!==picks[k].line)delete picks[k]});
       Object.keys(tpicks).forEach(k=>{const p=players[k];if(!p||!isTeam(p)||p.status!=="upcoming")delete tpicks[k];else tpicks[k]=mkT(k,tpicks[k].side)});
       render()},()=>{});
-    db.collection("slips").onSnapshot(s=>{allSlips={};s.docs.forEach(x=>allSlips[x.id]=(x.data().entries)||[]);loadNames();render()},()=>{});
-    db.collection("spins").onSnapshot(s=>{allSpins={};allSpinD={};s.docs.forEach(x=>{allSpins[x.id]=x.data().total||0;allSpinD[x.id]=x.data()});loadNames();render()},()=>{});
-    db.collection("games").onSnapshot(s=>{allGames={};s.docs.forEach(x=>allGames[x.id]=x.data().total||0);loadNames();render()},()=>{});
+    db.collection("slips").onSnapshot(s=>{allSlips={};s.docs.forEach(x=>allSlips[x.id]=(x.data().entries)||[]);loadNames();render()},err=>{console.error("Firestore slips error:",err);status="Leaderboard connection failed";render()});
+    db.collection("spins").onSnapshot(s=>{allSpins={};allSpinD={};s.docs.forEach(x=>{allSpins[x.id]=x.data().total||0;allSpinD[x.id]=x.data()});loadNames();render()},err=>{console.error("Firestore spins error:",err);status="Leaderboard connection failed";render()});
+    db.collection("games").onSnapshot(s=>{allGames={};allGameD={};s.docs.forEach(x=>{allGames[x.id]=x.data().total||0;allGameD[x.id]=x.data()});loadNames();render()},err=>{console.error("Firestore games error:",err);status="Leaderboard connection failed";render()});
     if(myId)db.doc("games/"+myId).onSnapshot(s=>{gm=s.exists?s.data():{};gm.total=gm.total||0;render()},()=>{});
     db.doc("settings/payouts").onSnapshot(s=>{payouts=s.exists?{...DEF,...s.data()}:{...DEF};render()},()=>{});
     db.doc("settings/promos").onSnapshot(s=>{promo={...PDEF,...(s.exists?s.data():{})};render()},()=>{});
@@ -853,13 +866,18 @@ pushObserve.observe(document.getElementById("main"),{childList:true});
     db.doc("settings/vbteams").onSnapshot(s=>{vbTeams=(s.exists&&s.data().list)||[];render()},()=>{});
     if(myId)db.doc("spins/"+myId).onSnapshot(s=>{spin=s.exists?s.data():{};spin.total=spin.total||0;render()},()=>{});
     if(myId)db.doc("slips/"+myId).onSnapshot(s=>{const x=s.exists?s.data():null;entries=(x&&x.entries)||[];render()},()=>{});
-  }catch(err){status="Unavailable";render()}
+  }catch(err){
+    console.error("PickSlip startup failed:",err);
+    status="Connection failed — please reload";
+    render();
+  }
 })();
 </script>
+<script src="pickslip-redesign.js?v=2"></script>
 <script>
 (function(){
   const t=setInterval(()=>{
-    try{ if(!db)return; }catch(e){return}
+    try{ if(!db||!admin)return; }catch(e){return}
     clearInterval(t);
     const b=document.createElement("button");
     b.textContent="Import data";
