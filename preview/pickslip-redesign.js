@@ -145,7 +145,7 @@ function rdCard(id,p){
  ${hideBtn(id,p)}
  <button class="rd-cardtap" data-rddetail="${esc(id)}" aria-label="Show ${esc(p.name)} past five games">
  <div class="rd-media">${rdPhoto(p)}${p.status==="upcoming"?'<span class="rd-heart" aria-hidden="true">♡</span>':""}</div>
- <div class="rd-name">${esc(p.name)}</div><div class="rd-meta">${esc(p.pos||"NFL")} · ${esc(rdAbbr(p))}</div>
+ <div class="rd-name">${esc(p.name)}</div><div class="rd-meta">${esc(p.pos||(p.game==="NBA"?"NBA":p.game==="CFB"?"CFB":p.game||"NFL"))} · ${esc(rdAbbr(p))}</div>
  <div class="rd-line">${p.baseLine!=null&&p.baseLine!==p.line?`<s>${esc(p.baseLine)}</s>`:""}${esc(p.line)}</div><div class="rd-stat">${esc(p.stat)}</div>
  ${lock?`<span class="rd-status">${badge(p)}</span>`:""}${pbadge(p)}
  </button><div class="rd-actions"><button data-k="${esc(id)}" data-d="more" class="rd-more ${sel==="more"?"chosen":""}" ${lock?"disabled":""}>↑ More</button><button data-k="${esc(id)}" data-d="less" class="rd-less ${sel==="less"?"chosen":""}" ${lock?"disabled":""}>↓ Less</button></div>
@@ -188,7 +188,7 @@ function rdShowDetail(id,stat){
  const games=rdGameHistory(a),line=Number(a.line),num=Number.isFinite(line),hits=games.filter(g=>num&&g.value>line).length,vals=games.map(g=>g.value).sort((x,y)=>x-y),avg=games.length?games.reduce((s,g)=>s+g.value,0)/games.length:null,median=vals.length?(vals[Math.floor((vals.length-1)/2)]+vals[Math.ceil((vals.length-1)/2)])/2:null;
  const fmt=v=>v==null?"—":String(Math.round(v*10)/10),sel=picks[key]&&picks[key].dir,lock=a.status!=="upcoming";
  $("panel").innerHTML=`<div class="rd-sheet-handle"></div><button class="rd-close" data-closepanel="1" aria-label="Close">×</button>
- <div class="rd-profile" style="--team:${esc(rdColor(p))}">${rdPhoto(p,true)}<div><h2>${esc(p.name)}</h2><p>${esc(p.pos||"NFL")} · ${esc(p.team)}</p><small>${p.week?"Week "+esc(p.week)+" · ":""}${p.opp?"vs "+esc(p.opp):"Player performance"}</small></div></div>
+ <div class="rd-profile" style="--team:${esc(rdColor(p))}">${rdPhoto(p,true)}<div><h2>${esc(p.name)}</h2><p>${esc(p.pos||(p.game==="NBA"?"NBA":p.game==="CFB"?"CFB":p.game||"NFL"))} · ${esc(p.team)}</p><small>${p.week?"Week "+esc(p.week)+" · ":""}${p.opp?"vs "+esc(p.opp):"Player performance"}</small></div></div>
  <div class="rd-stat-tabs">${options.map(([k,v])=>`<button data-rdstat="${esc(v.stat)}" class="${v.stat===a.stat?"active":""}">${esc(v.stat)}</button>`).join("")}</div>
  <div class="rd-prop"><div><b>${esc(a.line)}</b><small>${esc(a.stat)} · current line</small></div><div class="rd-prop-actions"><button data-k="${esc(key)}" data-d="more" class="rd-more ${sel==="more"?"chosen":""}" ${lock?"disabled":""}>↑ More</button><button data-k="${esc(key)}" data-d="less" class="rd-less ${sel==="less"?"chosen":""}" ${lock?"disabled":""}>↓ Less</button></div></div>
  <div class="rd-historytitle"><b>Last ${games.length||5} games</b><span>vs current line</span></div>
