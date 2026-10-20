@@ -806,6 +806,18 @@ window.pickslipTogglePush=async()=>{
  catch(e){console.error("Push registration:",e);alert(e.message||"Unable to update notifications");}
  finally{pushBusy=false;pushStatus()}
 };
+function pickslipPushWelcome(){
+ if(!pushInstalled()||!pushSupported()||Notification.permission!=="default"||localStorage.getItem("pickslip-push-welcome-dismissed")==="1"||localStorage.getItem("pickslip-push-enabled")==="1")return;
+ if(document.getElementById("push-welcome"))return;
+ const overlay=document.createElement("div");
+ overlay.id="push-welcome";
+ overlay.style.cssText="position:fixed;inset:0;z-index:10010;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:22px";
+ overlay.innerHTML='<div role="dialog" aria-modal="true" aria-labelledby="push-welcome-title" style="width:min(100%,370px);background:#14172e;color:white;border:1px solid #2a2e4d;border-radius:20px;padding:25px;text-align:center;font-family:inherit"><div style="font-size:42px">🔔</div><h2 id="push-welcome-title" style="margin:12px 0">Never miss a PickSlip moment!</h2><p style="color:#b7bcda;line-height:1.5">Get NFL game reminders and alerts when your slips win.</p><button id="push-welcome-enable" style="width:100%;background:#2f6bff;color:white;border:0;border-radius:12px;padding:14px;font-weight:700;font-size:16px">Enable Notifications</button><button id="push-welcome-later" style="margin-top:12px;background:none;color:#b7bcda;border:0;padding:12px;font-size:15px">Not Now</button></div>';
+ document.body.appendChild(overlay);
+ overlay.querySelector("#push-welcome-later").onclick=()=>{localStorage.setItem("pickslip-push-welcome-dismissed","1");overlay.remove()};
+ overlay.querySelector("#push-welcome-enable").onclick=async()=>{overlay.remove();await window.pickslipTogglePush()};
+}
+window.addEventListener("load",()=>setTimeout(pickslipPushWelcome,1400));
 const pushObserve=new MutationObserver(()=>{if(document.getElementById("push-toggle"))pushStatus()});
 pushObserve.observe(document.getElementById("main"),{childList:true});
 
