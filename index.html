@@ -156,7 +156,7 @@ const DEF={p2:3,p3:5,p4:10,p5:20,p6:37.5,f3_3:2.25,f3_2:1.25,f4_4:5,f4_3:1.5,f5_
 const PDEF={taco:true,flexfri:true,fboost:1.4,prot:true,boostOn:false,boostPct:25,boostGame:"All",demon:1.5,goblin:0.75,guar:1,spinTok:0.1,events:[],challenges:[],grants:{}};
 const FREEAMT=10,REFCAP=5;
 const FROWS=[[3,[3,2]],[4,[4,3]],[5,[5,4,3]],[6,[6,5,4]]];
-let db=null,admin=false,myId=null,players={},entries=[],payouts={...DEF},view="board",bsub="players",bsubChosen=false,picks={},tpicks={},mode="power",amt=10,status="Connecting…",gf="NFL",sq=false,q="",esub="active",spin={total:0},gm={total:0},allGames={},gsub="spin",allSlips={},allSpins={},names={},U=null,spinning=false,wheelDeg=0,lastWin=0,lastTok=0,hid={},showHid=false,wf="All",sf="All",promo={...PDEF},allSpinD={},useFree=false,optFri=true;
+let db=null,admin=false,myId=null,players={},entries=[],payouts={...DEF},view="board",bsub="players",bsubChosen=false,picks={},tpicks={},mode="power",amt=10,status="Connecting…",gf="NFL",sq=false,q="",esub="active",spin={total:0},gm={total:0},allGames={},allGameD={},gsub="spin",allSlips={},allSpins={},names={},U=null,spinning=false,wheelDeg=0,lastWin=0,lastTok=0,hid={},showHid=false,wf="All",sf="All",promo={...PDEF},allSpinD={},useFree=false,optFri=true;
 const LS="pickslip-prefs";
 try{const v=JSON.parse(localStorage.getItem(LS)||"{}");if(v.picks&&typeof v.picks==="object")picks=v.picks;if(v.tpicks&&typeof v.tpicks==="object")tpicks=v.tpicks;if(v.mode==="flex")mode="flex";if([5,10,25,50].includes(v.amt))amt=v.amt;if(["board","entries","feed","spin","profile"].includes(v.view))view=v.view;if(v.bsubChosen&&(v.bsub==="teams"||v.bsub==="players")){bsub=v.bsub;bsubChosen=true};if(v.gf)gf=v.gf;if(v.hid&&typeof v.hid==="object")hid=v.hid;if(typeof v.wf==="string")wf=v.wf;if(typeof v.sf==="string")sf=v.sf}catch(e){}
 function savePrefs(){try{localStorage.setItem(LS,JSON.stringify({picks,tpicks,mode,amt,view,bsub,bsubChosen,gf,hid,wf,sf}))}catch(e){}}
@@ -230,7 +230,7 @@ const l5H=p=>{
   const L=+p.line,mx=Math.max(...a,L,1);
   return `<div class="l5cap">Last ${a.length}</div><div class="l5"><u style="bottom:${(L/mx*40).toFixed(1)}px"></u>`+a.map(v=>`<i class="${v>L?"o":v<L?"u":""}" style="height:${Math.max(6,v/mx*40).toFixed(1)}px"><b>${v}</b></i>`).join("")+`</div>`;
 };
-function balance(){return balFor(entries,spin.total+gm.total)}
+function balance(){return balFor(entries,spin.total+gm.total)+(Number(gm.balanceAdjustment)||0)}
 function badge(pl){
   if(pl.status==="live")return `<span class="badge live">LIVE${!isTeam(pl)&&pl.current!=null?" · "+pl.current:""}</span>`;
   if(pl.status==="final")return `<span class="badge final">FINAL${isTeam(pl)?(pl.result==="void"?" · void":pl.result?" · "+esc(pl.result==="a"?pl.aLabel:pl.bLabel):""):" · "+pl.current}</span>`;
@@ -417,7 +417,7 @@ function walletHTML(){
 }
 function lbHTML(){
   const ids=new Set([...Object.keys(allSlips),...Object.keys(allSpins),...Object.keys(allGames)]);if(myId)ids.add(myId);
-  const rows=[...ids].map(id=>({id,b:id===myId?balance():balFor(allSlips[id]||[],(allSpins[id]||0)+(allGames[id]||0))})).sort((a,b)=>b.b-a.b);
+  const rows=[...ids].map(id=>({id,b:id===myId?balance():balFor(allSlips[id]||[],(allSpins[id]||0)+(allGames[id]||0))+(Number(allGameD[id]?.balanceAdjustment)||0)})).sort((a,b)=>b.b-a.b);
   return rows.map((r,i)=>{const d=r.b-100;return `<div class="lbr ${r.id===myId?"me":""}"><span class="rk">${i+1}</span><span class="lbn">${esc(names[r.id]||"Friend")}${r.id===myId?" (you)":""}</span><span class="lbb" style="${r.b<0?"color:var(--lose)":""}">$${r.b.toFixed(2)}${r.b<0?" ⚠":""}</span><small class="${d>=0?"w":"l"}">${d>=0?"+":"−"}$${Math.abs(d).toFixed(2)}</small></div>`}).join("")||'<div class="empty">No one is on the board yet.</div>';
 }
 async function loadNames(){
@@ -772,7 +772,7 @@ document.addEventListener("click",e=>{
       render()},()=>{});
     db.collection("slips").onSnapshot(s=>{allSlips={};s.docs.forEach(x=>allSlips[x.id]=(x.data().entries)||[]);loadNames();render()},()=>{});
     db.collection("spins").onSnapshot(s=>{allSpins={};allSpinD={};s.docs.forEach(x=>{allSpins[x.id]=x.data().total||0;allSpinD[x.id]=x.data()});loadNames();render()},()=>{});
-    db.collection("games").onSnapshot(s=>{allGames={};s.docs.forEach(x=>allGames[x.id]=x.data().total||0);loadNames();render()},()=>{});
+    db.collection("games").onSnapshot(s=>{allGames={};allGameD={};s.docs.forEach(x=>{allGames[x.id]=x.data().total||0;allGameD[x.id]=x.data()});loadNames();render()},()=>{});
     if(myId)db.doc("games/"+myId).onSnapshot(s=>{gm=s.exists?s.data():{};gm.total=gm.total||0;render()},()=>{});
     db.doc("settings/payouts").onSnapshot(s=>{payouts=s.exists?{...DEF,...s.data()}:{...DEF};render()},()=>{});
     db.doc("settings/promos").onSnapshot(s=>{promo={...PDEF,...(s.exists?s.data():{})};render()},()=>{});
