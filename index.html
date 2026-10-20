@@ -412,7 +412,7 @@ function profilePage(){
   const v=entries.map(evalEntry),set=v.filter(x=>x.done),wins=set.filter((x,i)=>x.won>0&&x.won!==entries.filter((e,j)=>v[j].done)[i].amt).length;
   $("main").innerHTML=`<div class="spinpg"><div class="sw" style="width:84px;height:84px;margin:12px auto;background:var(--acc);color:#fff;font-size:34px;font-weight:800">${admin?"A":"P"}</div><h2>${admin?"Admin":"Player"}</h2></div>
   <div class="stat"><div><b class="w">$${balance().toFixed(2)}</b><small>Balance</small></div><div><b>${entries.length}</b><small>Slips placed</small></div><div><b>${wins}</b><small>Slips won</small></div><div><b>$${spin.total||0}</b><small>Won from spins</small></div></div>
-  <h2 class="sec" style="margin-top:22px">Notifications</h2><div class="lb"><div class="row"><div><b>iPhone push alerts</b><small id="push-status">Install PickSlip to your Home Screen to enable alerts.</small></div><button class="pill on" id="push-toggle" onclick="window.pickslipTogglePush()">Enable</button></div></div>
+  <h2 class="sec" style="margin-top:22px">Notifications</h2><div class="lb"><div class="row"><div><b>iPhone push alerts</b><small id="push-status">Install PickSlip to your Home Screen to enable alerts.</small></div><button class="pill on" id="push-toggle" onclick="window.pickslipTogglePush()">Enable</button><button class="pill" onclick="window.pickslipSendTestPush()">Send Test</button></div></div>
   ${walletHTML()}<h2 class="sec" style="margin-top:22px">Leaderboard</h2><div class="lb">${lbHTML()}</div>
   <p class="note">Play money only. Scores and odds are set by the board admin.</p><p class="note" style="word-break:break-all">Your ID: ${myId||"-"}</p>`;
 }
@@ -818,6 +818,16 @@ function pickslipPushWelcome(){
  overlay.querySelector("#push-welcome-enable").onclick=async()=>{overlay.remove();await window.pickslipTogglePush()};
 }
 window.addEventListener("load",()=>setTimeout(pickslipPushWelcome,1400));
+window.pickslipSendTestPush=async()=>{
+ try{
+  const user=firebase.auth().currentUser;
+  if(!user)throw Error("Please sign in first");
+  const response=await fetch("https://us-central1-pickslip-4e265.cloudfunctions.net/sendTestPush",{method:"POST",headers:{"Authorization":"Bearer "+await user.getIdToken(),"Content-Type":"application/json"},body:"{}"});
+  const data=await response.json();
+  if(!response.ok)throw Error(data.error||"Test notification failed");
+  alert("Test notification sent! Close PickSlip and check your iPhone notifications.");
+ }catch(e){alert(e.message||"Unable to send test notification")}
+};
 const pushObserve=new MutationObserver(()=>{if(document.getElementById("push-toggle"))pushStatus()});
 pushObserve.observe(document.getElementById("main"),{childList:true});
 
