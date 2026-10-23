@@ -206,7 +206,8 @@ function pickState(p){
     if(pl.status==="final"&&pl.result)return pl.result==="void"?{r:"push"}:{r:pl.result===p.side?"hit":"miss"};
     return {r:"open"};
   }
-  if(pl.status==="final"&&pl.current!=null){const a=pl.current;return {r:a===p.line?"push":((p.dir==="more"?a>p.line:a<p.line)?"hit":"miss"),a}}
+  if(pl.status==="final"&&pl.result==="void")return {r:"push"};
+   if(pl.status==="final"&&pl.current!=null){const a=pl.current;return {r:a===p.line?"push":((p.dir==="more"?a>p.line:a<p.line)?"hit":"miss"),a}}
   const a=pl.current,live=pl.status==="live"&&a!=null;
   return {r:"open",a:live?a:null,hint:live?(p.dir==="more"?(a>p.line?"Over the line":""):(a>p.line?"Already over":"")):""};
 }
@@ -262,7 +263,7 @@ const l5H=p=>{
 function balance(){return balFor(entries,spin.total+gm.total)+(Number(gm.balanceAdjustment)||0)}
 function badge(pl){
   if(pl.status==="live")return `<span class="badge live">LIVE${!isTeam(pl)&&pl.current!=null?" · "+pl.current:""}</span>`;
-  if(pl.status==="final")return `<span class="badge final">FINAL${isTeam(pl)?(pl.result==="void"?" · void":pl.result?" · "+esc(pl.result==="a"?pl.aLabel:pl.bLabel):""):" · "+pl.current}</span>`;
+  if(pl.status==="final")return `<span class="badge final">${pl.result==="void"?"VOID":"FINAL${isTeam(pl)?(pl.result==="void"?" · void":pl.result?" · "+esc(pl.result==="a"?pl.aLabel:pl.bLabel):""):" · "+pl.current}</span>`;
   return `<span class="badge">Upcoming</span>`;
 }
 
@@ -313,7 +314,7 @@ function legacyBoard(){
   <h2 class="sec">${gf==="All"?(T?"Team Picks":"All Picks"):gl(gf)+" Picks"}</h2>${hideRow(T)}<div id="cards"></div>`;
   fillCards();
 }
-const chipsH=(id,p)=>`<div class="chips">${["upcoming","live","final"].map(s=>`<button data-set="${id}" data-s="${s}" class="${p.status===s?"on":""}">${s[0].toUpperCase()+s.slice(1)}</button>`).join("")}</div>`;
+const chipsH=(id,p)=>`<div class="chips">${["upcoming","live","final"].map(s=>`<button data-set="${id}" data-s="${s}" class="${p.status===s&&p.result!=="void"?"on":""}">${s[0].toUpperCase()+s.slice(1)}</button>`).join("")}<button data-void="${id}" class="${p.status==="final"&&p.result==="void"?"on":""}" aria-label="Void player prop">Void</button></div>`;
 function promoBanner(){
   const c=[];
   if(promo.taco&&dow()===2)c.push("🌮 Taco Tuesday: discounted lines");
@@ -773,14 +774,15 @@ document.addEventListener("click",e=>{
   else if(d.edit)editor(d.edit);
   else if(d.editt)editorT(d.editt);
   else if(d.st){if(!okEdit(d.st))return;const p=players[d.st];write(()=>db.doc("players/"+d.st).update({current:Math.max(0,(p.current||0)+ +d.by)}))}
-  else if(d.set){if(!okEdit(d.set))return;const p=players[d.set];const u={status:d.s};if(!isTeam(p)&&p.current==null&&d.s!=="upcoming")u.current=0;write(()=>db.doc("players/"+d.set).update(u))}
-  else if(d.res){if(!okEdit(d.res))return;write(()=>db.doc("players/"+d.res).update({result:d.r,status:"final"}))}
+  else if(d.set){if(!okEdit(d.set))return;const p=players[d.set];const u={status:d.s,...(!isTeam(p)?{result:null}:{})};if(!isTeam(p)&&p.current==null&&d.s!=="upcoming")u.current=0;write(()=>db.doc("players/"+d.set).update(u))}
+  else if(d.void){if(!admin||!players[d.void]||isTeam(players[d.void])||!okEdit(d.void))return;write(()=>db.doc("players/"+d.void).update({result:"void",status:"final"}))}
+   else if(d.res){if(!okEdit(d.res))return;write(()=>db.doc("players/"+d.res).update({result:d.r,status:"final"}))}
   else if(id==="save"){
     const n=$("f-n").value.trim(),l=parseFloat($("f-l").value),c=$("f-c").value===""?null:parseFloat($("f-c").value),s=$("f-s").value;
     if(!n)return void($("f-e").textContent="Enter a player name.");
     if(isNaN(l)||l<0)return void($("f-e").textContent="Enter a line of 0 or more.");
-    if(s==="final"&&c==null)return void($("f-e").textContent="Enter the final stat.");
-    if(d.id&&!okEdit(d.id))return;const data={game:$("f-g").value,name:n,team:$("f-t").value.trim()||"—",stat:$("f-st").value.trim()||"Points",line:l,status:s,current:c,...promoData()};
+    if(s==="final"&&c==null&&!(d.id&&players[d.id]?.result==="void"))return void($("f-e").textContent="Enter the final stat.");
+    if(d.id&&!okEdit(d.id))return;const data={game:$("f-g").value,name:n,team:$("f-t").value.trim()||"—",stat:$("f-st").value.trim()||"Points",line:l,status:s,current:c,...(d.id?{result:players[d.id]?.result==="void"&&s==="final"?"void":null}:{}),...promoData()};
     write(async()=>{d.id?await db.doc("players/"+d.id).update(data):await db.collection("players").add(data);$("sheet").classList.remove("open")});
   }
   else if(id==="savet"){
