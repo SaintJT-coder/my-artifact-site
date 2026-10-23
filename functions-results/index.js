@@ -68,5 +68,3 @@ exports.syncSportsResults=onSchedule({schedule:'every 1 minutes',region:'us-cent
     }
   }
 });
-
-

@@ -68,4 +68,8 @@ test('idempotent retries and corrections never silently change paid results',()=
 test('NFL uses ScoreID and explicitly confirmed player stats',()=>{
  const e=normalize({...mapping,league:'NFL'},{Score:{...box.Game,ScoreID:42,HomeScore:21,AwayScore:17},PlayerGames:[{ScoreID:42,PlayerID:9,Team:'BOS',Played:1,Games:1,PassingYards:225}]});
  assert.equal(grade({...p,game:'NFL',stat:'Passing Yards'},e).current,225);
+ for(const [stat,key] of [['Passing TDs','PassingTouchdowns'],['Rushing TDs','RushingTouchdowns'],['Receiving TDs','ReceivingTouchdowns']]){
+  e.players[0][key]=2;
+  assert.equal(grade({...p,game:'NFL',stat},e).current,2);
+ }
 });

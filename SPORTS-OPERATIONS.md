@@ -26,7 +26,7 @@ Supported player stats are listed explicitly in `functions-results/settlement.js
 
 ### Credentials and activation
 
-1. Obtain a production, uns­crambled SportsDataIO subscription covering NBA and NFL live/final box scores and verify representative responses against the adapter. No results key was configured during this change; only `ODDS_API_KEY` existed.
+1. Obtain a production, unscrambled SportsDataIO subscription covering NBA and NFL live/final box scores and verify representative responses against the adapter. No results key was configured during this change; only `ODDS_API_KEY` existed.
 2. Store the key with `firebase functions:secrets:set SPORTSDATAIO_KEY --project pickslip-4e265`. Never put it in the browser, repository, GitHub Pages, or a chat message.
 3. Configure these booleans in the ignored `functions-results/.env.pickslip-4e265` file: `SPORTS_RESULTS_ENABLED=true` and `SPORTS_RESULTS_REAL_DATA=true`. Keep disabled until mappings and feed entitlement are verified.
 4. Install the results dependencies with `npm ci --prefix functions-results` and deploy only this codebase: `firebase deploy --config firebase.results.json --only functions:sports-results --project pickslip-4e265`.
