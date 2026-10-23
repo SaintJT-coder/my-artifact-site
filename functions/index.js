@@ -29,8 +29,19 @@ async function getJSON(path, key) {
   url.searchParams.set("apiKey", key);
   const res = await fetch(url,{signal:AbortSignal.timeout(15000)});
   if (!res.ok) throw new Error("Odds API request failed (HTTP " + res.status + ")");
+  const remaining=res.headers.get('x-requests-remaining');
+  if(remaining!==null&&Number.isFinite(Number(remaining)))getJSON.remaining=Number(remaining);
   return res.json();
 }
+
+exports.refreshUpcomingSportsPicks=onSchedule({schedule:'every 60 minutes',region:'us-central1',secrets:[oddsKey],timeoutSeconds:540,maxInstances:1,retryCount:0},async()=>{
+ const scheduledJSON=(path,key)=>{
+  if(path.includes('/odds?')&&getJSON.remaining<100)throw Error('Automatic import quota reserve reached');
+  return getJSON(path,key);
+ };
+ const report=await require('./upcoming').refreshUpcoming({db:admin.firestore(),getJSON:scheduledJSON,key:oddsKey.value()});
+ console.log('Upcoming sports refresh',JSON.stringify(report));
+});
 
 // Refresh only exact provider event IDs. Legacy picks without IDs need manual mapping.
 exports.syncSportsSchedules=onSchedule({schedule:'every 15 minutes',region:'us-central1',secrets:[oddsKey],timeoutSeconds:120,maxInstances:1,retryCount:0},async()=>{

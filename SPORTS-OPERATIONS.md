@@ -10,6 +10,10 @@ Firestore checks the server-owned numeric `lockAtMs` and current pick status, li
 
 Both NFL and NBA importers now write `lockAtMs`. The NBA importer source was recovered from its deployed October 20 function because it was missing from main. Only those importers and the new schedule function are targeted in the timing deployment; unrelated push, reminder, CFB, and winning-slip functions must not be deleted.
 
+`refreshUpcomingSportsPicks` replenishes both player and team boards hourly from verified Odds API events within the next seven days, processing up to eight new/incomplete games per league per run. It creates new records only, using the same existing import IDs and player-line adjustments. Team odds require paired outcomes from the same bookmaker and complementary spread/total lines. Completed imports are not refetched; missing markets/failures retry after six hours, with a 100-credit reserve for automatic odds queries. This is distinct from refreshing schedules on existing records: the original timing rollout had no replenishment, so expired/undated inventory could leave the boards empty. The recovery adds fresh events without rebinding legacy picks or changing accepted slips. Import progress is server-only in `sportsImports`.
+
+Deploy this replenishment function explicitly with `firebase deploy --only functions:refreshUpcomingSportsPicks --project pickslip-4e265`. It uses the existing odds credential and does not enable the separate results worker.
+
 ## Unknown schedules
 
 NFL/NBA picks without an explicit, valid UTC start time are unavailable. Never infer their games from names, opponents, week numbers, or dates. The admin player/team editors have a verified ISO start field. Save a timestamp including `Z` or an explicit UTC offset to set both the start and deadline. Blank schedules remain unavailable.
