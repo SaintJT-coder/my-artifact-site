@@ -140,7 +140,7 @@ function redesignedBoard(){
  fillCards();
 }
 function rdCard(id,p){
- const sel=picks[id]&&picks[id].dir,lock=p.status!=="upcoming";
+ const sel=picks[id]&&picks[id].dir,lock=!PickLifecycle.available(p);
  return `<article class="rd-card ${sel?"rd-selected":""}" style="--team:${esc(rdColor(p))}">
  ${hideBtn(id,p)}
  <button class="rd-cardtap" data-rddetail="${esc(id)}" aria-label="Show ${esc(p.name)} past five games">
@@ -155,7 +155,7 @@ function rdCard(id,p){
 function redesignedFillCards(){
  const ids=Object.keys(players).filter(id=>{
   const p=players[id];
-  return !isTeam(p)&&(gf==="All"||p.game===gf)&&!(p.status==="final"&&(!admin||(hid[id]&&!showHid)))&&(gf!=="NFL"||((wf==="All"||String(p.week)===wf)&&(sf==="All"||p.stat===sf)))&&(!q||[p.name,p.team,p.stat,p.pos,p.opp].join(" ").toLowerCase().includes(q.trim().toLowerCase()));
+  return !isTeam(p)&&(admin||!PickLifecycle.supported(p)||PickLifecycle.available(p))&&(gf==="All"||p.game===gf)&&!(p.status==="final"&&(!admin||(hid[id]&&!showHid)))&&(gf!=="NFL"||((wf==="All"||String(p.week)===wf)&&(sf==="All"||p.stat===sf)))&&(!q||[p.name,p.team,p.stat,p.pos,p.opp].join(" ").toLowerCase().includes(q.trim().toLowerCase()));
  });
  ids.sort((a,b)=>{
  const x=players[a],y=players[b];return (y.status==="upcoming")-(x.status==="upcoming")||(x.week||999)-(y.week||999)||String(x.name||"").localeCompare(String(y.name||""))||String(x.stat||"").localeCompare(String(y.stat||""));
@@ -186,7 +186,7 @@ function rdShowDetail(id,stat){
  const p=players[id];if(!p)return;rdDetailId=id;
  const options=rdDetailOptions(p),current=options.find(([key,v])=>v.stat===stat)||options[0]||[id,p],key=current[0],a=current[1];
  const games=rdGameHistory(a),line=Number(a.line),num=Number.isFinite(line),hits=games.filter(g=>num&&g.value>line).length,vals=games.map(g=>g.value).sort((x,y)=>x-y),avg=games.length?games.reduce((s,g)=>s+g.value,0)/games.length:null,median=vals.length?(vals[Math.floor((vals.length-1)/2)]+vals[Math.ceil((vals.length-1)/2)])/2:null;
- const fmt=v=>v==null?"—":String(Math.round(v*10)/10),sel=picks[key]&&picks[key].dir,lock=a.status!=="upcoming";
+ const fmt=v=>v==null?"—":String(Math.round(v*10)/10),sel=picks[key]&&picks[key].dir,lock=!PickLifecycle.available(a);
  $("panel").innerHTML=`<div class="rd-sheet-handle"></div><button class="rd-close" data-closepanel="1" aria-label="Close">×</button>
  <div class="rd-profile" style="--team:${esc(rdColor(p))}">${rdPhoto(p,true)}<div><h2>${esc(p.name)}</h2><p>${esc(p.pos||(p.game==="NBA"?"NBA":p.game==="CFB"?"CFB":p.game||"NFL"))} · ${esc(p.team)}</p><small>${p.week?"Week "+esc(p.week)+" · ":""}${p.opp?"vs "+esc(p.opp):"Player performance"}</small></div></div>
  <div class="rd-stat-tabs">${options.map(([k,v])=>`<button data-rdstat="${esc(v.stat)}" class="${v.stat===a.stat?"active":""}">${esc(v.stat)}</button>`).join("")}</div>

@@ -1,0 +1,8 @@
+{
+  "name": "pickslip-validation",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "check": "node scripts/validate.cjs"
+  }
+}

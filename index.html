@@ -4,13 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pickslip</title>
-<meta name="pickslip-release" content="2026-10-20-update-banner-1">
+<meta name="pickslip-release" content="2026-10-23-sports-lifecycle-1">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="PickSlip">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#090A1B">
 <link rel="manifest" href="manifest.json">
 <script src="firebase-config.js"></script>
+<script src="functions/lifecycle.js?v=1"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -148,6 +149,8 @@ input,select,textarea{width:100%;border:1px solid var(--line);background:var(--c
 .was{color:var(--mute);font-size:16px;text-decoration:line-through;font-weight:600}
 .hidebtn{position:absolute;top:8px;right:8px;z-index:2;border:0;background:rgba(0,0,0,.55);color:#fff;border-radius:14px;padding:5px 10px;font:700 12px inherit;font-family:inherit}
 .pchip{flex:none;font-size:13px;font-weight:700;padding:8px 12px;background:var(--pill);border-radius:20px;white-space:nowrap}
+
+.sports-live-dot{display:inline-block;width:8px;height:8px;margin-right:5px;border-radius:50%;background:#ff3030;animation:sports-pulse 1s infinite}@keyframes sports-pulse{50%{opacity:.2}}@media(prefers-reduced-motion:reduce){.sports-live-dot{animation:none}}
 </style>
 <link rel="stylesheet" href="pickslip-redesign.css?v=1">
 
@@ -200,7 +203,7 @@ const prod=o=>Object.values(o).reduce((m,p)=>m*p.mult,1);
 
 function pickState(p){
   const pl=players[p.pid];
-  if(!pl)return {r:"void"};
+  if(!pl)return {r:"open"};
   if(pl.spoiled&&p.promo==="taco")return {r:"push"};
   if(p.side){
     if(pl.status==="final"&&pl.result)return pl.result==="void"?{r:"push"}:{r:pl.result===p.side?"hit":"miss"};
@@ -262,9 +265,10 @@ const l5H=p=>{
 };
 function balance(){return balFor(entries,spin.total+gm.total)+(Number(gm.balanceAdjustment)||0)}
 function badge(pl){
-  if(pl.status==="live")return `<span class="badge live">LIVE${!isTeam(pl)&&pl.current!=null?" · "+pl.current:""}</span>`;
+  if(PickLifecycle.phase(pl)==="live")return `<span class="badge live"><i class="sports-live-dot" aria-hidden="true"></i>LIVE${!isTeam(pl)&&pl.current!=null?" · "+pl.current:""}</span>`;
   if(pl.status==="final")return `<span class="badge final">${pl.result==="void"?"VOID":"FINAL"+(isTeam(pl)?(pl.result?" · "+esc(pl.result==="a"?pl.aLabel:pl.bLabel):""):" · "+pl.current)}</span>`;
-  return `<span class="badge">Upcoming</span>`;
+  const phase=PickLifecycle.phase(pl);
+  return `<span class="badge">${esc(({locked:"Locked",postponed:"Postponed",suspended:"Suspended",canceled:"Awaiting void review",review:"Under review",pending:"Awaiting final stats"})[phase]||"Upcoming")}</span>`;
 }
 
 
@@ -294,6 +298,7 @@ const tnc=n=>isDarkC(tc(n))?"tn":"";
 const tcDark=n=>["Steelers","Seahawks","Raiders","Saints"].includes(n)?"#090A1B":"#fff";
 const today=()=>new Date().toLocaleDateString("en-CA");
 function render(){
+  scheduleSportsRefresh();
   savePrefs();
   if(view==="spin"&&spinning)return;
   $("bt").textContent="PICKSLIP";
@@ -304,6 +309,15 @@ function render(){
   if(!db){$("main").innerHTML=`<div class="empty">${esc(status)}</div>`;return}
   if(view==="spin"&&gsub!=="spin")gamePage();else ({board,entries:entriesPage,feed:feedPage,spin:spinPage,profile:profilePage})[view]();
 }
+let sportsTimer;
+function scheduleSportsRefresh(){
+  clearTimeout(sportsTimer);
+  const now=Date.now(),times=Object.values(players).filter(PickLifecycle.supported).flatMap(p=>[PickLifecycle.start(p)-600000,PickLifecycle.start(p)]).filter(t=>t>now);
+  const delay=Math.min(60000,times.length?Math.max(1,Math.min(...times)-now):60000);
+  sportsTimer=setTimeout(()=>{for(const cur of [picks,tpicks])for(const id of Object.keys(cur))if(!PickLifecycle.available(players[id]))delete cur[id];render();scheduleSportsRefresh()},delay);
+}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden){render();scheduleSportsRefresh()}});
+scheduleSportsRefresh();
 function board(){return redesignedBoard()}
 function legacyBoard(){
   const T=bsub==="teams";
@@ -342,13 +356,13 @@ function hideRow(T){
 function fillCards(){return bsub==="teams"?legacyFillCards():redesignedFillCards()}
 function legacyFillCards(){
   const T=bsub==="teams",ql=q.trim().toLowerCase();
-  const ids=Object.keys(players).filter(id=>{const p=players[id];if(isTeam(p)!==T)return false;if(gf!=="All"&&p.game!==gf)return false;if(p.status==="final"&&(!admin||(hid[id]&&!showHid)))return false;if(!T&&gf==="NFL"){if(wf!=="All"&&String(p.week)!==wf)return false;if(sf!=="All"&&p.stat!==sf)return false}return !ql||[p.name,p.team,p.aLabel,p.bLabel,p.title,p.stat,p.pos,p.opp].join(" ").toLowerCase().includes(ql)});
+  const ids=Object.keys(players).filter(id=>{const p=players[id];if(isTeam(p)!==T)return false;if(!admin&&PickLifecycle.supported(p)&&!PickLifecycle.available(p))return false;if(gf!=="All"&&p.game!==gf)return false;if(p.status==="final"&&(!admin||(hid[id]&&!showHid)))return false;if(!T&&gf==="NFL"){if(wf!=="All"&&String(p.week)!==wf)return false;if(sf!=="All"&&p.stat!==sf)return false}return !ql||[p.name,p.team,p.aLabel,p.bLabel,p.title,p.stat,p.pos,p.opp].join(" ").toLowerCase().includes(ql)});
   const wkOf=i=>+((players[i].title||"").match(/Wk (\d+)/)||[])[1]||999;
   ids.sort((x,y)=>(isVB(players[y].game)-isVB(players[x].game))||(wkOf(x)-wkOf(y))||((players[x].week||999)-(players[y].week||999))||(players[x].week&&players[y].week?String(players[x].name||"").localeCompare(players[y].name||"")||String(players[x].stat||"").localeCompare(players[y].stat||""):0));
   let lw=null;
   if(!ids.length){$("cards").innerHTML=`<div class="empty">${admin?"Nothing here yet. Use the buttons above to add some.":"Nothing posted here yet."}</div>`;return}
   $("cards").innerHTML=`<div class="grid ${T?"one":""}">`+ids.map(id=>{
-    const p=players[id],lock=p.status!=="upcoming";
+    const p=players[id],lock=!PickLifecycle.available(p);
     if(T){
       const sel=tpicks[id]?tpicks[id].side:null;
       const w=wkOf(id),hd=(w!==999&&w!==lw)?`<h2 class="sec" style="margin:14px 0 0;font-size:18px">NFL Week ${w}</h2>`:"";lw=w;
@@ -388,7 +402,7 @@ function feedPage(){
 function copySlip(e){
   const T=e.type==="team",tgt={};let skip=0;
   e.picks.forEach(p=>{const pl=players[p.pid];
-    if(!pl||pl.status!=="upcoming"||T!==isTeam(pl)){skip++;return}
+    if(!pl||!PickLifecycle.available(pl)||T!==isTeam(pl)){skip++;return}
     tgt[p.pid]=T?mkT(p.pid,p.side):{pid:p.pid,name:pl.name,stat:pl.stat,line:pl.line,dir:p.dir,promo:pl.promo||null}});
   const ok=Object.keys(tgt).length;
   if(!ok){toast("None of those picks are open anymore.");return}
@@ -509,9 +523,17 @@ const field=(id,l,v,extra="")=>`<label for="${id}">${l}</label><input id="${id}"
 const statusSel=v=>`<label for="f-s">Status</label><select id="f-s">${["upcoming","live","final"].map(s=>`<option ${v===s?"selected":""}>${s}</option>`).join("")}</select>`;
 const promoFields=p=>`<label for="f-pr">Promo</label><select id="f-pr">${[["","None"],["taco","🌮 Taco (discounted line)"],["demon","😈 Demon (harder, bigger payout)"],["goblin","👺 Goblin (easier, smaller payout)"],["guarantee","🛡️ Guarantee (big line drop)"]].map(([v,l])=>`<option value="${v}" ${(p.promo||"")===v?"selected":""}>${l}</option>`).join("")}</select>${field("f-bl0","Original line (before promo)",p.baseLine==null?"":p.baseLine,'type="number" step="0.5" inputmode="decimal"')}${field("f-wk","NFL week",p.week==null?"":p.week,'type="number" min="1" max="18"')}${field("f-op","Opponent (e.g. @DEN)",p.opp||"")}${field("f-pos","Position",p.pos||"")}${field("f-l5","Last 5, oldest first (e.g. 88/102/54/71/96)",(p.l5||[]).join("/"))}`;
 const promoData=()=>{const bl=parseFloat($("f-bl0").value),wk=parseInt($("f-wk").value),l5=($("f-l5").value||"").split(/[\/,\s]+/).filter(Boolean).map(Number).filter(x=>!isNaN(x)).slice(-5);return {promo:$("f-pr").value||null,baseLine:isNaN(bl)?null:bl,week:isNaN(wk)?null:wk,opp:$("f-op").value.trim()||null,pos:$("f-pos").value.trim()||null,l5}};
+const scheduleFields=p=>field("f-start","Verified game start (UTC ISO, e.g. 2026-11-01T20:00:00Z)",p.commenceTime||"");
+function scheduleData(){
+ const commenceTime=$("f-start").value.trim();
+ if(!commenceTime)return {commenceTime:null,lockAtMs:null};
+ const ms=PickLifecycle.start({commenceTime});
+ if(!Number.isFinite(ms)){$("f-e").textContent="Enter a verified ISO time including Z or UTC offset.";return null}
+ return {commenceTime:new Date(ms).toISOString(),lockAtMs:ms-600000};
+}
 function editor(id){
   const p=id?players[id]:{name:"",team:"",game:"",stat:"Points",line:"",status:"upcoming",current:null};
-  $("panel").innerHTML=`<h2>${id?"Edit player":"Add a player"}</h2>${gameSel(p.game)}${field("f-n","Player name",p.name)}${field("f-t","Team",p.team)}${field("f-st","Stat",p.stat)}${field("f-l","Line",p.line,'type="number" step="0.5" min="0" inputmode="decimal"')}${field("f-c","Current / final stat",p.current==null?"":p.current,'type="number" step="1" inputmode="decimal"')}${statusSel(p.status)}${promoFields(p)}
+  $("panel").innerHTML=`<h2>${id?"Edit player":"Add a player"}</h2>${gameSel(p.game)}${field("f-n","Player name",p.name)}${field("f-t","Team",p.team)}${field("f-st","Stat",p.stat)}${field("f-l","Line",p.line,'type="number" step="0.5" min="0" inputmode="decimal"')}${field("f-c","Current / final stat",p.current==null?"":p.current,'type="number" step="1" inputmode="decimal"')}${statusSel(p.status)}${scheduleFields(p)}${promoFields(p)}
   <div class="err" id="f-e"></div><button class="cta" id="save" data-id="${id||""}">${id?"Save changes":"Add to board"}</button>${id?`<button class="del" id="rmp" data-id="${id}">Delete player</button>`:""}`;
   $("sheet").classList.add("open");
 }
@@ -520,7 +542,7 @@ function editorT(id){
   const num='type="number" step="0.05" min="1" inputmode="decimal"';
   $("panel").innerHTML=`<h2>${id?"Edit team pick":"Add a team pick"}</h2>${gameSel(p.game)}${field("f-ti","Question",p.title)}
   ${vbTeams.length?`<label>CCC VBall teams · scroll to pick Side A (left) and Side B (right)</label><div class="wheels">${wheelHTML("a",p.aLabel)}${wheelHTML("b",p.bLabel)}</div>`:""}
-  ${field("f-al","Side A",p.aLabel)}${field("f-am","Side A multiplier",p.aMult,num)}${field("f-bl","Side B",p.bLabel)}${field("f-bm","Side B multiplier",p.bMult,num)}${statusSel(p.status)}
+  ${field("f-al","Side A",p.aLabel)}${field("f-am","Side A multiplier",p.aMult,num)}${field("f-bl","Side B",p.bLabel)}${field("f-bm","Side B multiplier",p.bMult,num)}${statusSel(p.status)}${scheduleFields(p)}
   <label for="f-r">Result</label><select id="f-r"><option value="">Not decided</option><option value="a" ${p.result==="a"?"selected":""}>Side A won</option><option value="b" ${p.result==="b"?"selected":""}>Side B won</option><option value="void" ${p.result==="void"?"selected":""}>Void / refund</option></select>
   <div class="err" id="f-e"></div><button class="cta" id="savet" data-id="${id||""}">${id?"Save changes":"Add to board"}</button>${id?`<button class="del" id="rmp" data-id="${id}">Delete team pick</button>`:""}`;
   $("sheet").classList.add("open");initWheels();
@@ -640,12 +662,12 @@ document.addEventListener("click",e=>{
   else if(id==="getfree"){view="spin";render()}
   else if(id==="spinbtn")doSpin()
   else if(d.k){
-    const p=players[d.k];if(!p||p.status!=="upcoming")return;
+    const p=players[d.k];if(!p||!PickLifecycle.available(p))return;
     if(picks[d.k]&&picks[d.k].dir===d.d)delete picks[d.k];
     else if(Object.keys(picks).length<6||picks[d.k])picks[d.k]={pid:d.k,name:p.name,stat:p.stat,line:p.line,dir:d.d,promo:p.promo||null};
     render()}
   else if(d.t){
-    const p=players[d.t];if(!p||p.status!=="upcoming")return;
+    const p=players[d.t];if(!p||!PickLifecycle.available(p))return;
     if(tpicks[d.t]&&tpicks[d.t].side===d.sd)delete tpicks[d.t];
     else if(Object.keys(tpicks).length<6||tpicks[d.t])tpicks[d.t]=mkT(d.t,d.sd);
     render()}
@@ -667,6 +689,11 @@ document.addEventListener("click",e=>{
       const ref=db.doc("slips/"+myId);
       await db.runTransaction(async tx=>{
         const sn=await tx.get(ref),ex=(sn.exists&&sn.data().entries)||[];
+        for(const pick of pl){
+          const selected=await tx.get(db.doc("players/"+pick.pid));
+          const current=selected.exists?selected.data():null;
+          if(!PickLifecycle.available(current)||T!==isTeam(current)||(!T&&current.line!==pick.line)||(T&&current[pick.side+"Mult"]!==pick.mult))throw new Error("A pick has locked or changed. Refresh your slip.");
+        }
         if(free){if(tokensOf(myId,ex)<1)throw new Error("No free entries left.")}
         else if(entry.amt>balFor(ex,(spin.total||0)+(gm.total||0)))throw new Error("Not enough points.");
         if(!free&&promo.prot&&!ex.some(x=>(x.day||myDay(x.ts))===today()))entry.prot=true;
@@ -778,19 +805,21 @@ document.addEventListener("click",e=>{
   else if(d.void){if(!admin||!players[d.void]||isTeam(players[d.void])||!okEdit(d.void))return;write(()=>db.doc("players/"+d.void).update({result:"void",status:"final"}))}
    else if(d.res){if(!okEdit(d.res))return;write(()=>db.doc("players/"+d.res).update({result:d.r,status:"final"}))}
   else if(id==="save"){
+    const scheduling=scheduleData();if(!scheduling)return;
     const n=$("f-n").value.trim(),l=parseFloat($("f-l").value),c=$("f-c").value===""?null:parseFloat($("f-c").value),s=$("f-s").value;
     if(!n)return void($("f-e").textContent="Enter a player name.");
     if(isNaN(l)||l<0)return void($("f-e").textContent="Enter a line of 0 or more.");
     if(s==="final"&&c==null&&!(d.id&&players[d.id]?.result==="void"))return void($("f-e").textContent="Enter the final stat.");
-    if(d.id&&!okEdit(d.id))return;const data={game:$("f-g").value,name:n,team:$("f-t").value.trim()||"—",stat:$("f-st").value.trim()||"Points",line:l,status:s,current:c,...(d.id?{result:players[d.id]?.result==="void"&&s==="final"?"void":null}:{}),...promoData()};
+    if(d.id&&!okEdit(d.id))return;const data={game:$("f-g").value,name:n,team:$("f-t").value.trim()||"—",stat:$("f-st").value.trim()||"Points",line:l,status:s,current:c,...(d.id?{result:players[d.id]?.result==="void"&&s==="final"?"void":null}:{}),...promoData(),...scheduling};
     write(async()=>{d.id?await db.doc("players/"+d.id).update(data):await db.collection("players").add(data);$("sheet").classList.remove("open")});
   }
   else if(id==="savet"){
+    const scheduling=scheduleData();if(!scheduling)return;
     const g=$("f-g").value,ti=$("f-ti").value.trim()||"Winner",al=$("f-al").value.trim(),bl=$("f-bl").value.trim(),am=parseFloat($("f-am").value),bm=parseFloat($("f-bm").value),s=$("f-s").value,r=$("f-r").value||null;
     if(!al||!bl)return void($("f-e").textContent="Enter both sides.");
     if(!(am>=1)||!(bm>=1))return void($("f-e").textContent="Multipliers must be 1 or more.");
     if(s==="final"&&!r)return void($("f-e").textContent="Pick the result for a final game.");
-    if(d.id&&!okEdit(d.id))return;const data={kind:"team",game:g,title:ti,aLabel:al,aMult:am,bLabel:bl,bMult:bm,status:r&&s==="upcoming"?"final":s,result:r};
+    if(d.id&&!okEdit(d.id))return;const data={kind:"team",game:g,title:ti,aLabel:al,aMult:am,bLabel:bl,bMult:bm,status:r&&s==="upcoming"?"final":s,result:r,...scheduling};
     write(async()=>{d.id?await db.doc("players/"+d.id).update(data):await db.collection("players").add(data);$("sheet").classList.remove("open")});
   }
   else if(id==="saveo"||id==="resto"){
@@ -798,7 +827,7 @@ document.addEventListener("click",e=>{
     for(const k of Object.keys(DEF)){const x=id==="resto"?DEF[k]:parseFloat($("o-"+k).value);if(isNaN(x)||x<0)return void($("f-e").textContent="Every multiplier needs a number of 0 or more.");v[k]=x}
     write(async()=>{await db.doc("settings/payouts").set(v);$("sheet").classList.remove("open")});
   }
-  else if(id==="rmp"){if(okEdit(d.id)&&confirm("Delete this? Slips using it will be voided."))write(async()=>{await db.doc("players/"+d.id).delete();delete picks[d.id];delete tpicks[d.id];$("sheet").classList.remove("open")})}
+  else if(id==="rmp"){if(okEdit(d.id)&&confirm("Delete this? Existing slips will remain pending until this pick is restored or reviewed. Use Void to refund it."))write(async()=>{await db.doc("players/"+d.id).delete();delete picks[d.id];delete tpicks[d.id];$("sheet").classList.remove("open")})}
 });
 
 // iPhone Web Push: user gesture required; never request permission during startup.
@@ -898,8 +927,8 @@ pushObserve.observe(document.getElementById("main"),{childList:true});
     }catch(e){}
     window.pickslipShowAccountOnStart?.();
     db.collection("players").onSnapshot(s=>{players={};s.docs.forEach(x=>players[x.id]=x.data());
-      Object.keys(picks).forEach(k=>{const p=players[k];if(!p||isTeam(p)||p.status!=="upcoming"||p.line!==picks[k].line)delete picks[k]});
-      Object.keys(tpicks).forEach(k=>{const p=players[k];if(!p||!isTeam(p)||p.status!=="upcoming")delete tpicks[k];else tpicks[k]=mkT(k,tpicks[k].side)});
+      Object.keys(picks).forEach(k=>{const p=players[k];if(!p||isTeam(p)||!PickLifecycle.available(p)||p.line!==picks[k].line)delete picks[k]});
+      Object.keys(tpicks).forEach(k=>{const p=players[k];if(!p||!isTeam(p)||!PickLifecycle.available(p))delete tpicks[k];else tpicks[k]=mkT(k,tpicks[k].side)});
       render()},()=>{});
     db.collection("slips").onSnapshot(s=>{allSlips={};s.docs.forEach(x=>allSlips[x.id]=(x.data().entries)||[]);loadNames();render()},err=>{console.error("Firestore slips error:",err);status="Leaderboard connection failed";render()});
     db.collection("spins").onSnapshot(s=>{allSpins={};allSpinD={};s.docs.forEach(x=>{allSpins[x.id]=x.data().total||0;allSpinD[x.id]=x.data()});loadNames();render()},err=>{console.error("Firestore spins error:",err);status="Leaderboard connection failed";render()});
@@ -959,7 +988,7 @@ pushObserve.observe(document.getElementById("main"),{childList:true});
  window.pickslipShowAccountOnStart=function(){if(firstShown)return;firstShown=true;if(auth().currentUser?.isAnonymous)openAccount();};
 })();
 </script>
-<script src="pickslip-redesign.js?v=2"></script>
+<script src="pickslip-redesign.js?v=3"></script>
 <script>
 (function(){
   const t=setInterval(()=>{

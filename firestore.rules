@@ -1,0 +1,108 @@
+ rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.uid == '16EApnFozEdyvkumTdJQUTF4ohA3';
+    }
+
+
+    function validPick(pick, team) {
+      let p = get(/databases/$(database)/documents/players/$(pick.pid)).data;
+      return p.status == 'upcoming'
+        && (!(p.game in ['NFL', 'NBA']) ||
+          (p.lockAtMs is number && request.time.toMillis() < p.lockAtMs &&
+           (!('eventStatus' in p) || !(p.eventStatus in ['postponed', 'suspended', 'canceled', 'review', 'final']))))
+        && ((p.get('kind', '') == 'team') == team)
+        && (p.get('kind', '') == 'team'
+          ? (pick.side in ['a', 'b'] && pick.mult == (pick.side == 'a' ? p.aMult : p.bMult))
+          : (pick.dir in ['more', 'less'] && pick.line == p.line));
+    }
+    function validEntry(e) {
+      let ps = e.picks;
+      return ps is list && ps.size() >= 1 && ps.size() <= 6
+        && (e.type == 'team' || (e.type == 'props' && ps.size() >= 2))
+        && validPick(ps[0], e.type == 'team')
+        && (ps.size() < 2 || validPick(ps[1], e.type == 'team'))
+        && (ps.size() < 3 || validPick(ps[2], e.type == 'team'))
+        && (ps.size() < 4 || validPick(ps[3], e.type == 'team'))
+        && (ps.size() < 5 || validPick(ps[4], e.type == 'team'))
+        && (ps.size() < 6 || validPick(ps[5], e.type == 'team'));
+    }
+    function appendSlip(old) {
+      let next = request.resource.data.entries;
+      return request.resource.data.keys().hasOnly(['entries'])
+        && next is list && next.size() == old.size() + 1
+        && next.removeAll([next[old.size()]]) == old
+        && validEntry(next[old.size()]);
+    }
+
+    match /players/{id} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    match /settings/{id} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+
+    match /slips/{uid} {
+      allow read: if request.auth != null;
+      // Preserve the existing trusted administrator's own backup/restore workflow.
+      allow write: if isAdmin() && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid && appendSlip([]);
+      allow update: if request.auth != null && request.auth.uid == uid && appendSlip(resource.data.entries);
+    }
+    match /sportsGames/{id} {
+      allow read, write: if isAdmin();
+    }
+    match /sportsSettlementAudit/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    match /spins/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.uid == uid;
+    }
+
+    match /profiles/{uid} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.auth.uid == uid;
+    }
+
+match /games/{uid} {
+  allow read: if request.auth != null;
+
+  // Users can update their own game data.
+  allow create, update, delete: if request.auth != null
+    && request.auth.uid == uid;
+
+  // Admin can change only the balance adjustment
+  // on another user's existing game document.
+  allow update: if isAdmin()
+    && request.auth.uid != uid
+    && request.resource.data.diff(resource.data)
+      .affectedKeys().hasOnly(['balanceAdjustment'])
+    && request.resource.data.balanceAdjustment is number;
+
+  // Admin can initialize a missing game document
+  // with a balance adjustment only.
+  allow create: if isAdmin()
+    && request.auth.uid != uid
+    && request.resource.data.keys()
+      .hasOnly(['balanceAdjustment'])
+    && request.resource.data.balanceAdjustment is number;
+}
+
+    match /packImages/{id} {
+      allow read: if request.auth != null;
+      allow write: if isAdmin();
+    }
+  }
+}
