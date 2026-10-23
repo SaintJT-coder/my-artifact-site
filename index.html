@@ -263,7 +263,7 @@ const l5H=p=>{
 function balance(){return balFor(entries,spin.total+gm.total)+(Number(gm.balanceAdjustment)||0)}
 function badge(pl){
   if(pl.status==="live")return `<span class="badge live">LIVE${!isTeam(pl)&&pl.current!=null?" · "+pl.current:""}</span>`;
-  if(pl.status==="final")return `<span class="badge final">${pl.result==="void"?"VOID":"FINAL${isTeam(pl)?(pl.result==="void"?" · void":pl.result?" · "+esc(pl.result==="a"?pl.aLabel:pl.bLabel):""):" · "+pl.current}</span>`;
+  if(pl.status==="final")return `<span class="badge final">${pl.result==="void"?"VOID":"FINAL"+(isTeam(pl)?(pl.result?" · "+esc(pl.result==="a"?pl.aLabel:pl.bLabel):""):" · "+pl.current)}</span>`;
   return `<span class="badge">Upcoming</span>`;
 }
 
