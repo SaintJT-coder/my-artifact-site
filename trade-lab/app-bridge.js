@@ -6,15 +6,15 @@ import {initializeApp} from "https://www.gstatic.com/firebasejs/11.10.0/firebase
 import {getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 
 const app=initializeApp({
- apiKey:"AIzaSyA4Z1PnKxXnTVJ_G-XCGse323DiUhkwhwI",
- authDomain:"pickslip-4e265.firebaseapp.com",
- projectId:"pickslip-4e265",
- storageBucket:"pickslip-4e265.firebasestorage.app",
- messagingSenderId:"893144261549",
- appId:"1:893144261549:web:d3624341a6777ad2963724",
+ apiKey:"AIzaSyAX51sGR4kiuGjnDwoWicEKlezurCyolMc",
+ authDomain:"fieldvision-e16af.firebaseapp.com",
+ projectId:"fieldvision-e16af",
+ storageBucket:"fieldvision-e16af.firebasestorage.app",
+ messagingSenderId:"533906063305",
+ appId:"1:533906063305:web:d3624341a6777ad2963724",
 },"fieldvision");
 const auth=getAuth(app);
-const API="https://us-central1-pickslip-4e265.cloudfunctions.net/fieldvisionDispatch";
+const API="https://us-central1-fieldvision-e16af.cloudfunctions.net/fieldvisionDispatch";
 const $=id=>document.getElementById(id);
 const note=(value)=>{$("copyMessage").textContent=value;};
 const actionIds=["previewTrade","liveTrade","runLineupDry","runLineupLive","refreshIntelligence","refreshStatuses","loadSnapshot","checkRuns"];
