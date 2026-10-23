@@ -46,9 +46,26 @@ section[hidden]{display:none}.panel{padding:19px;margin-bottom:13px}.panel h2{fo
 <section id="finder" hidden><div class="panel"><h2>Find a trade</h2><p>Search player names and filter recommendations by league.</p><div class="toolbar"><input id="query" class="field" placeholder="Player or team name"><select id="leagueSelect" class="field"><option value="">All leagues</option></select></div></div><div id="deals" class="empty">Import recommendations to browse trades.</div></section>
 <section id="history" hidden><div class="panel"><h2>Trade history</h2><p>Import your private ledger JSON from GitHub. Records are stored in this browser, not on this public site.</p><label class="btn alt" for="historyInput">↥ Import trade history</label><input type="file" id="historyInput" accept=".json,application/json" hidden><div class="notice">ESPN offers that disappear from Pending Moves are not automatically confirmed accepted or rejected.</div><input class="field" id="historyQuery" placeholder="Filter by player or league"></div><div id="historyItems" class="empty">No history imported.</div></section>
 <section id="submit" hidden>
-<div class="panel"><h2>Launch an ESPN trade</h2><p>Enter only the two player names. Your GitHub bot scans all configured leagues and checks for existing proposals. Trading is authorized securely through GitHub Actions, not this public page.</p><div class="toolbar"><input class="field" id="offerName" placeholder="Player YOU offer"><input class="field" id="requestName" placeholder="Player YOU want"></div><div class="actions"><button id="copyNames" class="btn">Copy trade details</button><a class="btn alt" target="_blank" rel="noopener" href="https://github.com/SaintJT-coder/espn-lineup-bot/actions/workflows/batch-trades.yml">Open Trade Runner ↗</a></div><p id="copyMessage" class="muted"></p></div>
-<div class="panel"><h2>Other commands</h2><div class="actions"><a class="btn alt" target="_blank" rel="noopener" href="https://github.com/SaintJT-coder/espn-lineup-bot/actions/workflows/trade-intelligence.yml">Analyze rosters ↗</a><a class="btn alt" target="_blank" rel="noopener" href="https://github.com/SaintJT-coder/espn-lineup-bot/actions/workflows/trade-status-report.yml">Check trade statuses ↗</a><a class="btn alt" target="_blank" rel="noopener" href="https://github.com/SaintJT-coder/espn-lineup-bot/actions/workflows/lineup.yml">Run lineup bot ↗</a></div></div>
-<div class="notice">To prevent your ESPN credentials and private trade data from being exposed, this site never sends authenticated trade requests. Use GitHub Actions for live submission.</div>
+<div class="panel"><h2>Launch an ESPN trade</h2><p>Enter only the two player names. Your GitHub bot scans all configured leagues and checks for existing proposals. Trading is authorized securely through GitHub Actions, not this public page.</p><div class="toolbar"><input class="field" id="offerName" placeholder="Player YOU offer"><input class="field" id="requestName" placeholder="Player YOU want"></div><div class="panel" style="margin-top:14px;background:#0a192f">
+<div class="eyebrow">YOUR SECURE BOT CONNECTION</div>
+<p id="loginState" class="muted">Connect your account to run your private ESPN bot.</p>
+<div class="actions"><button type="button" id="signInBot" class="btn alt">Sign in with Google</button><button type="button" id="signOutBot" class="btn ghost" hidden>Sign out</button></div>
+</div>
+<div class="actions"><button id="previewTrade" class="btn alt">Check matching leagues (dry run)</button><button id="liveTrade" class="btn">🚀 Send trade proposals</button></div>
+<p class="muted">Sending trades requires an additional confirmation. The bot automatically scans your leagues and skips matching pending offers.</p>
+<p id="copyMessage" class="muted" role="status" aria-live="polite"></p></div>
+<div class="panel"><h2>Other commands</h2>
+<div class="actions">
+<button type="button" id="runLineupDry" class="btn alt">Check lineups</button>
+<button type="button" id="runLineupLive" class="btn">⚡ Update lineups</button>
+<button type="button" id="refreshIntelligence" class="btn alt">Analyze rosters</button>
+<button type="button" id="refreshStatuses" class="btn alt">Check trade statuses</button>
+<button type="button" id="loadSnapshot" class="btn ghost">↻ Load latest data</button>
+<button type="button" id="checkRuns" class="btn ghost">View recent runs</button>
+</div>
+<div id="runsPanel" class="muted" role="status" aria-live="polite"></div>
+</div>
+<div class="notice">Live trades and lineup writes require explicit confirmation. Your ESPN cookies and GitHub token remain on the server.</div>
 </section>
 <footer>FIELDVISION / TRADE LAB • PRIVACY-FIRST PWA<br><span id="stamp">Local snapshot • No ESPN secrets on this page</span></footer>
 </div>
@@ -76,9 +93,10 @@ $('query').addEventListener('input',filterIdeas);$('leagueSelect').addEventListe
 function show(tab){document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));document.querySelectorAll('section').forEach(s=>s.hidden=s.id!==tab);history.replaceState(null,'','#'+tab);window.scrollTo({top:0,behavior:'smooth'})}
 document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>show(b.dataset.tab)));
 document.addEventListener('click',e=>{const b=e.target.closest('[data-use]');if(!b)return;const p=JSON.parse(decodeURIComponent(b.dataset.use));$('offerName').value=p.offer;$('requestName').value=p.request;show('submit')});
-$('copyNames').addEventListener('click',async()=>{const v='Offer: '+$('offerName').value+'\nRequest: '+$('requestName').value+'\nLive confirmation: SEND_ALL_MATCHING_TRADES';try{await navigator.clipboard.writeText(v);$('copyMessage').textContent='Copied! Open GitHub Actions to paste names and choose dry-run or live mode.'}catch(e){$('copyMessage').textContent='Copy manually: '+v.replaceAll('\n',' • ')}});
+
 update();const initial=location.hash.replace('#','');if(['home','finder','history','submit'].includes(initial))show(initial);
 if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}))}
 })();
 </script>
+<script type="module" src="./app-bridge.js"></script>
 </body></html>
