@@ -3,7 +3,7 @@
  * Backend must be deployed before dispatch or data refresh can succeed.
  */
 import {initializeApp} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
-import {getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+import {getAuth, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail, onAuthStateChanged, signOut} from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
 
 const app=initializeApp({
  apiKey:"AIzaSyAX51sGR4kiuGjnDwoWicEKlezurCyolMc",
@@ -24,7 +24,9 @@ function setBusy(value) {
 }
 async function api(path,method="GET",data=null) {
  const user=auth.currentUser;
- if(!user)throw Error("Sign in with the authorized Google account first.");
+ if(!user)throw Error("Sign in with your authorized FieldVision account first.");
+ await user.reload();
+ if(!auth.currentUser?.emailVerified)throw Error("Verify your email address before running private ESPN bot commands.");
  const jwt=await user.getIdToken();
  let response;
  try {
@@ -55,11 +57,40 @@ $("signInBot").addEventListener("click",async()=>{
    $("loginState").textContent="Sign-in failed: "+(error.code||error.message);
  }
 });
+$("emailAuthForm").addEventListener("submit",async event=>{
+ event.preventDefault();
+ $("authMessage").textContent="Signing in...";
+ try {
+   await signInWithEmailAndPassword(auth,$("authEmail").value.trim(),$("authPassword").value);
+   $("authMessage").textContent="Signed in. Verify your email if requested.";
+ } catch(error){$("authMessage").textContent="Sign in failed: "+(error.code||error.message);}
+});
+$("createAccount").addEventListener("click",async()=>{
+ $("authMessage").textContent="Creating FieldVision login...";
+ try {
+   const credentials=await createUserWithEmailAndPassword(auth,$("authEmail").value.trim(),$("authPassword").value);
+   await sendEmailVerification(credentials.user);
+   $("authMessage").textContent="Account created. Check your inbox and click the Firebase verification link, then return and sign in.";
+ }catch(error){$("authMessage").textContent="Account setup failed: "+(error.code||error.message);}
+});
+$("resetPassword").addEventListener("click",async()=>{
+ const email=$("authEmail").value.trim();
+ if(!email){$("authMessage").textContent="Enter your email first.";return;}
+ try{await sendPasswordResetEmail(auth,email);$("authMessage").textContent="Password reset email requested. Check your inbox.";}
+ catch(error){$("authMessage").textContent="Reset failed: "+(error.code||error.message);}
+});
+$("verifyEmail").addEventListener("click",async()=>{
+ if(!auth.currentUser)return;
+ try{await sendEmailVerification(auth.currentUser);$("authMessage").textContent="Verification link sent. Open your inbox.";}
+ catch(error){$("authMessage").textContent="Verification send failed: "+(error.code||error.message);}
+});
 $("signOutBot").addEventListener("click",()=>signOut(auth));
 onAuthStateChanged(auth,user=>{
  $("loginState").textContent=user
-   ?"Signed in as "+(user.email||"Google user")+". Server access is limited to the approved owner."
-   :"Not signed in. Use your authorized Google account to run the bot.";
+   ?"Signed in as "+(user.email||"FieldVision user")+(user.emailVerified?". Email verified.":". Check your inbox to verify your email before running the bot.")
+   :"Not signed in. Open FieldVision in Safari for Google sign-in, or use the email/password option below.";
+ $("emailAuth").hidden=Boolean(user);
+ $("verifyEmail").hidden=!user||user.emailVerified;
  $("signInBot").hidden=Boolean(user);
  $("signOutBot").hidden=!user;
 });
