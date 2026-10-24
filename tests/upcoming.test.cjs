@@ -38,10 +38,10 @@ test('refresh creates once, retains existing slips/lines, and skips completed ev
   }};
  }};
  const getJSON=async path=>path.includes('/odds?')?odds():[event];
- const first=await refreshUpcoming({db,getJSON,key:'test',now});
+ const first=await refreshUpcoming({db,getJSON,key:'test',now,enrichPhotos:async(game,event,picks)=>picks});
  assert.equal(first.NBA.created,4);assert.equal(first.NFL.created,4);
  const count=created.length;
- const second=await refreshUpcoming({db,getJSON,key:'test',now:now+3600000});
+ const second=await refreshUpcoming({db,getJSON,key:'test',now:now+3600000,enrichPhotos:async(game,event,picks)=>picks});
  assert.equal(created.length,count);assert.equal(second.NBA.events,0);
 });
 test('provider failure never removes or rewrites picks',async()=>{

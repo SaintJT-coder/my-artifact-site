@@ -5,6 +5,12 @@ const admin = require("firebase-admin");
 admin.initializeApp();
 
 const oddsKey = defineSecret("ODDS_API_KEY");
+const photoResolver=require('./player-photos').createPhotoResolver();
+async function displayMetadata(game,event,name){
+ const [pick]=await photoResolver(game,event,[{data:{name}}]);
+ const {name:ignored,...metadata}=pick.data;
+ return metadata;
+}
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const PROJECT = "pickslip-4e265";
 const BASE = "https://api.the-odds-api.com/v4";
@@ -122,7 +128,7 @@ exports.importNflOdds = onRequest({region:"us-central1",secrets:[oddsKey],timeou
         const adjusted = c.bookLine + (["Rushing Yards","Receiving Yards"].includes(stat)?5:0);
         // Create only: never reset statuses, results, or previously imported player lines.
         try {
-          await ref.create({game:"NFL",name:c.player,team:"—",pos:"",opp:clean(event.away_team)+" @ "+clean(event.home_team),
+          await ref.create({game:"NFL",name:c.player,team:"—",...await displayMetadata('NFL',event,c.player),pos:"",opp:clean(event.away_team)+" @ "+clean(event.home_team),
             week,stat,book:c.bookLine,line:adjusted,l5:[],status:"upcoming",current:null,
             source:"the-odds-api",bookmaker:c.bookmaker,eventId:clean(event.id),commenceTime:event.commence_time,
             lockAtMs:Date.parse(event.commence_time)-600000});
@@ -280,7 +286,7 @@ async function nbaOddsImport(req,res){
    for(const c of candidates.values()){
     const stat=NBA_PLAYER_MARKETS[c.market],adjusted=c.point+(["Points","Rebounds"].includes(stat)?1:0);
     const ref=admin.firestore().collection("players").doc("oddsapi-nba-"+hash([ev.id,c.market,c.name.toLowerCase()].join("|")));
-    try{await ref.create({game:"NBA",name:c.name,team:"—",opp:clean(ev.away_team)+" @ "+clean(ev.home_team),
+    try{await ref.create({game:"NBA",name:c.name,team:"—",...await displayMetadata('NBA',ev,c.name),opp:clean(ev.away_team)+" @ "+clean(ev.home_team),
       stat,book:c.point,line:adjusted,status:"upcoming",current:null,l5:[],
       source:"the-odds-api",bookmaker:c.bookmaker,americanOdds:c.price,eventId:clean(ev.id),commenceTime:ev.commence_time,lockAtMs:Date.parse(ev.commence_time)-600000,
       starterStatus:"unverified",importedAt:admin.firestore.FieldValue.serverTimestamp()});playerCreated++}

@@ -1,6 +1,7 @@
 'use strict';
 const {createHash}=require('node:crypto');
 const {start}=require('./lifecycle');
+const {createPhotoResolver}=require('./player-photos');
 const sports={NFL:'americanfootball_nfl',NBA:'basketball_nba'};
 const markets={NFL:{player_pass_yds:'Passing Yards',player_rush_yds:'Rushing Yards',player_reception_yds:'Receiving Yards'},NBA:{player_points:'Points',player_rebounds:'Rebounds',player_assists:'Assists',player_threes:'3-Pointers Made',player_points_rebounds_assists:'Points + Rebounds + Assists'}};
 const hash=x=>createHash('sha256').update(x).digest('hex');
@@ -15,7 +16,7 @@ function buildPicks(league,event,odds,now=Date.now()){
  if(!sports[league]||!eligible(event,now))return [];
  if(odds?.id!==event.id||odds.home_team!==event.home_team||odds.away_team!==event.away_team||odds.commence_time!==event.commence_time)throw Error('Odds event identity or schedule mismatch');
  const picks=[],props=new Map(),teams=new Map();
- const base={game:league,status:'upcoming',source:'the-odds-api',eventId:event.id,commenceTime:event.commence_time,lockAtMs:Date.parse(event.commence_time)-600000};
+ const base={game:league,status:'upcoming',source:'the-odds-api',eventId:event.id,homeTeam:event.home_team,awayTeam:event.away_team,commenceTime:event.commence_time,lockAtMs:Date.parse(event.commence_time)-600000};
  for(const book of odds.bookmakers||[])for(const market of book.markets||[]){
   if(markets[league][market.key])for(const outcome of market.outcomes||[]){
    if(outcome.name!=='Over'||typeof outcome.description!=='string'||!outcome.description.trim()||!numeric(outcome.point)||outcome.point<0||!price(outcome.price))continue;
@@ -48,7 +49,7 @@ function buildPicks(league,event,odds,now=Date.now()){
  }
  return picks;
 }
-async function refreshUpcoming({db,getJSON,key,now=Date.now(),limit=8}){
+async function refreshUpcoming({db,getJSON,key,now=Date.now(),limit=8,enrichPhotos=createPhotoResolver()}){
  const report={NFL:{created:0,events:0,errors:0},NBA:{created:0,events:0,errors:0}};
  for(const league of ['NFL','NBA']){
   let events;
@@ -63,7 +64,8 @@ async function refreshUpcoming({db,getJSON,key,now=Date.now(),limit=8}){
    try{
     const requested=Object.keys(markets[league]).concat(['h2h','spreads','totals']).join(',');
     const odds=await getJSON('/sports/'+sports[league]+'/events/'+event.id+'/odds?regions=us&markets='+requested+'&oddsFormat=american',key);
-    const candidates=buildPicks(league,event,odds,Date.now());
+    const raw=buildPicks(league,event,odds,Date.now());
+    const candidates=await enrichPhotos(league,event,raw);
     let created=0;
     for(const pick of candidates){
      try{await db.collection('players').doc(pick.id).create(pick.data);created++;}

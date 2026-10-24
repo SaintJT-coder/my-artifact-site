@@ -14,6 +14,8 @@ Both NFL and NBA importers now write `lockAtMs`. The NBA importer source was rec
 
 Deploy this replenishment function explicitly with `firebase deploy --only functions:refreshUpcomingSportsPicks --project pickslip-4e265`. It uses the existing odds credential and does not enable the separate results worker.
 
+Player imports now attach display metadata (`team`, `espnId`, `headshotUrl`, `photoSource`) from verified ESPN rosters for the two event teams. The old imported `team: "—"` records prevented the NFL browser roster lookup from finding pictures; NBA pictures also depended on browser-side roster requests. Direct photo links remove that dependency for enriched picks. Matching checks both event-team rosters, rejects ambiguous identities, supports unique suffix formatting differences, and has a documented athlete-ID-bound alias for Zonovan/Bam Knight. ESPN IDs and display aliases are never used to settle picks. Provider outages leave imports available with the existing initials fallback. The repair backfilled photos on 974 existing props using display-only field masks and update-time preconditions; no lines, results, or slips were changed.
+
 ## Unknown schedules
 
 NFL/NBA picks without an explicit, valid UTC start time are unavailable. Never infer their games from names, opponents, week numbers, or dates. The admin player/team editors have a verified ISO start field. Save a timestamp including `Z` or an explicit UTC offset to set both the start and deadline. Blank schedules remain unavailable.
