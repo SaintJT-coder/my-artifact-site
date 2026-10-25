@@ -128,7 +128,10 @@ function rdPhoto(p,large){
 }
 function rdFilters(){
  if(gf!=="NFL"||bsub==="teams")return"";
- const ps=Object.values(players).filter(p=>!isTeam(p)&&p.game==="NFL"),weeks=[...new Set(ps.map(p=>p.week).filter(Boolean))].sort((a,b)=>a-b),stats=[...new Set(ps.map(p=>p.stat).filter(Boolean))].sort();
+ const ps=Object.values(players).filter(p=>!isTeam(p)&&p.game==="NFL"&&PickLifecycle.available(p)),weeks=[...new Set(ps.map(p=>p.week).filter(Boolean))].sort((a,b)=>a-b);
+ if(wf!=="All"&&!weeks.some(w=>String(w)===wf))wf="All";
+ const current=wf==="All"?ps:ps.filter(p=>String(p.week)===wf),stats=[...new Set(current.map(p=>p.stat).filter(Boolean))].sort();
+ if(sf!=="All"&&!stats.includes(sf))sf="All";
  return `<div class="rd-filters"><label>Week <select id="rd-week" aria-label="Week"><option value="All">All</option>${weeks.map(w=>`<option value="${esc(w)}" ${String(w)===wf?"selected":""}>Week ${w}</option>`).join("")}</select></label><label>Stat <select id="rd-stat" aria-label="Stat"><option value="All">All</option>${stats.map(s=>`<option value="${esc(s)}" ${s===sf?"selected":""}>${esc(s)}</option>`).join("")}</select></label><button title="Clear filters" data-rdreset="1">☷</button></div>`;
 }
 function redesignedBoard(){
@@ -141,11 +144,13 @@ function redesignedBoard(){
 }
 function rdCard(id,p){
  const sel=picks[id]&&picks[id].dir,lock=!PickLifecycle.available(p);
+ const start=PickLifecycle.start(p),when=Number.isFinite(start)?new Date(start).toLocaleString(undefined,{weekday:'short',month:'numeric',day:'numeric',hour:'numeric',minute:'2-digit'}):'';
  return `<article class="rd-card ${sel?"rd-selected":""}" style="--team:${esc(rdColor(p))}">
  ${hideBtn(id,p)}
  <button class="rd-cardtap" data-rddetail="${esc(id)}" aria-label="Show ${esc(p.name)} past five games">
  <div class="rd-media">${rdPhoto(p)}${p.status==="upcoming"?'<span class="rd-heart" aria-hidden="true">♡</span>':""}</div>
  <div class="rd-name">${esc(p.name)}</div><div class="rd-meta">${esc(p.pos||(p.game==="NBA"?"NBA":p.game==="CFB"?"CFB":p.game||"NFL"))} · ${esc(rdAbbr(p))}</div>
+ ${when?`<div class="rd-meta"><time datetime="${esc(p.commenceTime)}">${esc(when)}</time></div>`:""}
  <div class="rd-line">${p.baseLine!=null&&p.baseLine!==p.line?`<s>${esc(p.baseLine)}</s>`:""}${esc(p.line)}</div><div class="rd-stat">${esc(p.stat)}</div>
  ${lock?`<span class="rd-status">${badge(p)}</span>`:""}${pbadge(p)}
  </button><div class="rd-actions"><button data-k="${esc(id)}" data-d="more" class="rd-more ${sel==="more"?"chosen":""}" ${lock?"disabled":""}>↑ More</button><button data-k="${esc(id)}" data-d="less" class="rd-less ${sel==="less"?"chosen":""}" ${lock?"disabled":""}>↓ Less</button></div>
@@ -158,7 +163,7 @@ function redesignedFillCards(){
   return !isTeam(p)&&(admin||!PickLifecycle.supported(p)||PickLifecycle.available(p))&&(gf==="All"||p.game===gf)&&!(p.status==="final"&&(!admin||(hid[id]&&!showHid)))&&(gf!=="NFL"||((wf==="All"||String(p.week)===wf)&&(sf==="All"||p.stat===sf)))&&(!q||[p.name,p.team,p.stat,p.pos,p.opp].join(" ").toLowerCase().includes(q.trim().toLowerCase()));
  });
  ids.sort((a,b)=>{
- const x=players[a],y=players[b];return (y.status==="upcoming")-(x.status==="upcoming")||(x.week||999)-(y.week||999)||String(x.name||"").localeCompare(String(y.name||""))||String(x.stat||"").localeCompare(String(y.stat||""));
+ return PickLifecycle.compareUpcoming(players[a],players[b]);
  });
  $("cards").innerHTML=ids.length?`<div class="rd-grid">${ids.map(id=>rdCard(id,players[id])).join("")}</div>`:`<div class="empty">No picks match these filters.</div>`;
  rdApplyPhotos();

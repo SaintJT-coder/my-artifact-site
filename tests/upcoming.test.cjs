@@ -49,3 +49,30 @@ test('provider failure never removes or rewrites picks',async()=>{
  const result=await refreshUpcoming({db,getJSON:async()=>{throw Error('offline')},key:'test',now});
  assert.equal(result.NFL.errors,1);assert.equal(result.NBA.errors,1);
 });
+test('all three distinct NFL touchdown markets retain confirmed sportsbook lines',()=>{
+ const data=odds();data.bookmakers[0].markets=[
+  {key:'player_pass_tds',outcomes:[{name:'Over',description:'QB',point:1.5,price:-110}]},
+  {key:'player_rush_tds',outcomes:[{name:'Over',description:'RB',point:0.5,price:110}]},
+  {key:'player_reception_tds',outcomes:[{name:'Over',description:'WR',point:0.5,price:120}]},
+  {key:'player_anytime_td',outcomes:[{name:'Yes',description:'Other',price:120}]}
+ ];
+ const picks=buildPicks('NFL',event,data,now);
+ assert.deepEqual(picks.map(p=>[p.data.stat,p.data.line]),[['Passing TDs',1.5],['Rushing TDs',0.5],['Receiving TDs',0.5]]);
+ assert.equal(new Set(picks.map(p=>p.id)).size,3);
+});
+test('market expansion revisits completed NFL games once without reimporting NBA',async()=>{
+ let state={complete:true,retryAfter:now+86400000};const requests=[];
+ const db={collection(name){return {doc(){return {get:async()=>({data:()=>state}),set:async value=>{state=value},create:async()=>{}}}}}};
+ const getJSON=async path=>{
+  requests.push(path);
+  if(path.includes('basketball_nba'))return [];
+  if(!path.includes('/odds?'))return [event];
+  const data=odds();data.bookmakers[0].markets=[{key:'player_pass_tds',outcomes:[{name:'Over',description:'QB',point:1.5,price:-110}]}];return data;
+ };
+ const options={db,getJSON,key:'test',now,enrichPhotos:async(game,event,picks)=>picks};
+ await refreshUpcoming(options);
+ assert.equal(state.marketVersion,2);assert.equal(state.complete,true);
+ const quotes=requests.filter(x=>x.includes('/odds?'));assert.equal(quotes.length,1);
+ assert.match(quotes[0],/markets=player_pass_tds,player_rush_tds,player_reception_tds&/);
+ await refreshUpcoming(options);assert.equal(requests.filter(x=>x.includes('/odds?')).length,1);
+});

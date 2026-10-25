@@ -14,9 +14,9 @@ async function displayMetadata(game,event,name){
 const {onSchedule} = require("firebase-functions/v2/scheduler");
 const PROJECT = "pickslip-4e265";
 const BASE = "https://api.the-odds-api.com/v4";
-const MARKETS = ["player_pass_yds","player_rush_yds","player_reception_yds"];
+const MARKETS = ["player_pass_yds","player_rush_yds","player_reception_yds","player_pass_tds","player_rush_tds","player_reception_tds"];
 const MAX_EVENTS = 8;
-const PLAYABLE_MARKETS = {player_pass_yds:"Passing Yards",player_rush_yds:"Rushing Yards",player_reception_yds:"Receiving Yards"};
+const PLAYABLE_MARKETS = {player_pass_yds:"Passing Yards",player_rush_yds:"Rushing Yards",player_reception_yds:"Receiving Yards",player_pass_tds:"Passing TDs",player_rush_tds:"Rushing TDs",player_reception_tds:"Receiving TDs"};
 const crypto = require("crypto");
 const hash = s => crypto.createHash("sha256").update(s).digest("hex");
 const priority = k => k === "draftkings" ? 0 : k === "fanduel" ? 1 : 2;

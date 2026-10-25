@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Pickslip</title>
-<meta name="pickslip-release" content="2026-10-23-sports-lifecycle-1">
+<meta name="pickslip-release" content="2026-10-25-nfl-touchdowns-next-up-1">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="PickSlip">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#090A1B">
 <link rel="manifest" href="manifest.json">
 <script src="firebase-config.js"></script>
-<script src="functions/lifecycle.js?v=1"></script>
+<script src="functions/lifecycle.js?v=2"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -190,7 +190,7 @@ const FREEAMT=10,REFCAP=5;
 const FROWS=[[3,[3,2]],[4,[4,3]],[5,[5,4,3]],[6,[6,5,4]]];
 let db=null,admin=false,myId=null,players={},entries=[],payouts={...DEF},view="board",bsub="players",bsubChosen=false,picks={},tpicks={},mode="power",amt=10,status="Connecting…",gf="NFL",sq=false,q="",esub="active",spin={total:0},gm={total:0},allGames={},allGameD={},gsub="spin",allSlips={},allSpins={},names={},U=null,spinning=false,wheelDeg=0,lastWin=0,lastTok=0,hid={},showHid=false,wf="All",sf="All",promo={...PDEF},allSpinD={},useFree=false,optFri=true;
 const LS="pickslip-prefs";
-try{const v=JSON.parse(localStorage.getItem(LS)||"{}");if(v.picks&&typeof v.picks==="object")picks=v.picks;if(v.tpicks&&typeof v.tpicks==="object")tpicks=v.tpicks;if(v.mode==="flex")mode="flex";if([5,10,25,50].includes(v.amt))amt=v.amt;if(["board","entries","feed","spin","profile"].includes(v.view))view=v.view;if(v.bsubChosen&&(v.bsub==="teams"||v.bsub==="players")){bsub=v.bsub;bsubChosen=true};if(v.gf)gf=v.gf;if(v.hid&&typeof v.hid==="object")hid=v.hid;if(typeof v.wf==="string")wf=v.wf;if(typeof v.sf==="string")sf=v.sf}catch(e){}
+try{const v=JSON.parse(localStorage.getItem(LS)||"{}");if(v.picks&&typeof v.picks==="object")picks=v.picks;if(v.tpicks&&typeof v.tpicks==="object")tpicks=v.tpicks;if(v.mode==="flex")mode="flex";if([5,10,25,50].includes(v.amt))amt=v.amt;if(["board","entries","feed","spin","profile"].includes(v.view))view=v.view;if(v.bsubChosen&&(v.bsub==="teams"||v.bsub==="players")){bsub=v.bsub;bsubChosen=true};if(v.gf)gf=v.gf;if(v.hid&&typeof v.hid==="object")hid=v.hid;if(typeof v.sf==="string")sf=v.sf}catch(e){}
 function savePrefs(){try{localStorage.setItem(LS,JSON.stringify({picks,tpicks,mode,amt,view,bsub,bsubChosen,gf,hid,wf,sf}))}catch(e){}}
 const $=id=>document.getElementById(id);
 const esc=t=>String(t==null?"":t).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -341,7 +341,7 @@ function promoBanner(){
 }
 function nflFilters(T){
   if(T||gf!=="NFL")return"";
-  const L=Object.values(players).filter(p=>!isTeam(p)&&p.game==="NFL"&&p.week);
+  const L=Object.values(players).filter(p=>!isTeam(p)&&p.game==="NFL"&&p.week&&PickLifecycle.available(p));
   if(!L.length)return"";
   const wks=[...new Set(L.map(p=>p.week))].sort((a,b)=>a-b),sts=[...new Set(L.map(p=>p.stat))];
   const pl=(a,k,v,l)=>`<button class="pill ${a===v?"on":""}" data-${k}="${esc(v)}" style="padding:8px 14px;font-size:14px">${esc(l)}</button>`;
@@ -358,7 +358,7 @@ function legacyFillCards(){
   const T=bsub==="teams",ql=q.trim().toLowerCase();
   const ids=Object.keys(players).filter(id=>{const p=players[id];if(isTeam(p)!==T)return false;if(!admin&&PickLifecycle.supported(p)&&!PickLifecycle.available(p))return false;if(gf!=="All"&&p.game!==gf)return false;if(p.status==="final"&&(!admin||(hid[id]&&!showHid)))return false;if(!T&&gf==="NFL"){if(wf!=="All"&&String(p.week)!==wf)return false;if(sf!=="All"&&p.stat!==sf)return false}return !ql||[p.name,p.team,p.aLabel,p.bLabel,p.title,p.stat,p.pos,p.opp].join(" ").toLowerCase().includes(ql)});
   const wkOf=i=>+((players[i].title||"").match(/Wk (\d+)/)||[])[1]||999;
-  ids.sort((x,y)=>(isVB(players[y].game)-isVB(players[x].game))||(wkOf(x)-wkOf(y))||((players[x].week||999)-(players[y].week||999))||(players[x].week&&players[y].week?String(players[x].name||"").localeCompare(players[y].name||"")||String(players[x].stat||"").localeCompare(players[y].stat||""):0));
+  ids.sort((x,y)=>(isVB(players[y].game)-isVB(players[x].game))||PickLifecycle.compareUpcoming(players[x],players[y])||(wkOf(x)-wkOf(y)));
   let lw=null;
   if(!ids.length){$("cards").innerHTML=`<div class="empty">${admin?"Nothing here yet. Use the buttons above to add some.":"Nothing posted here yet."}</div>`;return}
   $("cards").innerHTML=`<div class="grid ${T?"one":""}">`+ids.map(id=>{
@@ -988,7 +988,7 @@ pushObserve.observe(document.getElementById("main"),{childList:true});
  window.pickslipShowAccountOnStart=function(){if(firstShown)return;firstShown=true;if(auth().currentUser?.isAnonymous)openAccount();};
 })();
 </script>
-<script src="pickslip-redesign.js?v=3"></script>
+<script src="pickslip-redesign.js?v=4"></script>
 <script>
 (function(){
   const t=setInterval(()=>{

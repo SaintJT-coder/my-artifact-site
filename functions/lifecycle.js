@@ -16,6 +16,12 @@
     if(p.status==='live'||(supported(p)&&now>=start(p)))return 'live';
     return available(p,now)?'upcoming':'locked';
   }
-  const api={supported,start,available,phase};
+  function compareUpcoming(a,b,now=Date.now()){
+    const playable=Number(available(b,now))-Number(available(a,now));
+    if(playable)return playable;
+    const at=start(a),bt=start(b),delta=(Number.isFinite(at)?at:Infinity)-(Number.isFinite(bt)?bt:Infinity);
+    return (Number.isNaN(delta)?0:delta)||String(a.name||a.title||'').localeCompare(String(b.name||b.title||''))||String(a.stat||'').localeCompare(String(b.stat||''));
+  }
+  const api={supported,start,available,phase,compareUpcoming};
   if(typeof module!=='undefined')module.exports=api;else root.PickLifecycle=api;
 })(typeof window!=='undefined'?window:globalThis);

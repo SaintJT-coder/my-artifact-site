@@ -3,7 +3,7 @@ const {createHash}=require('node:crypto');
 const {start}=require('./lifecycle');
 const {createPhotoResolver}=require('./player-photos');
 const sports={NFL:'americanfootball_nfl',NBA:'basketball_nba'};
-const markets={NFL:{player_pass_yds:'Passing Yards',player_rush_yds:'Rushing Yards',player_reception_yds:'Receiving Yards'},NBA:{player_points:'Points',player_rebounds:'Rebounds',player_assists:'Assists',player_threes:'3-Pointers Made',player_points_rebounds_assists:'Points + Rebounds + Assists'}};
+const markets={NFL:{player_pass_yds:'Passing Yards',player_rush_yds:'Rushing Yards',player_reception_yds:'Receiving Yards',player_pass_tds:'Passing TDs',player_rush_tds:'Rushing TDs',player_reception_tds:'Receiving TDs'},NBA:{player_points:'Points',player_rebounds:'Rebounds',player_assists:'Assists',player_threes:'3-Pointers Made',player_points_rebounds_assists:'Points + Rebounds + Assists'}};
 const hash=x=>createHash('sha256').update(x).digest('hex');
 const rank=x=>x==='draftkings'?0:x==='fanduel'?1:2;
 const numeric=x=>typeof x==='number'&&Number.isFinite(x);
@@ -59,10 +59,14 @@ async function refreshUpcoming({db,getJSON,key,now=Date.now(),limit=8,enrichPhot
   for(const event of events.filter(e=>eligible(e,now)).sort((a,b)=>Date.parse(a.commence_time)-Date.parse(b.commence_time))){
    if(attempted>=limit)break;
    const state=db.collection('sportsImports').doc(league+'-'+event.id),snapshot=await state.get(),previous=snapshot.data()||{};
-   if(previous.complete||previous.retryAfter>now)continue;
+   const marketVersion=league==='NFL'?2:1;
+   const tdMarkets=['player_pass_tds','player_rush_tds','player_reception_tds'];
+   const missingTD=league==='NFL'?tdMarkets.filter(k=>!(previous.tdCoverage||[]).includes(k)):[];
+   const expandMarkets=previous.complete&&((previous.marketVersion||1)<marketVersion||(missingTD.length&&(!previous.tdRetryAfter||previous.tdRetryAfter<=now)));
+   if((previous.complete&&!expandMarkets)||(!expandMarkets&&previous.retryAfter>now))continue;
    attempted++;
    try{
-    const requested=Object.keys(markets[league]).concat(['h2h','spreads','totals']).join(',');
+    const requested=(expandMarkets?missingTD:Object.keys(markets[league]).concat(['h2h','spreads','totals'])).join(',');
     const odds=await getJSON('/sports/'+sports[league]+'/events/'+event.id+'/odds?regions=us&markets='+requested+'&oddsFormat=american',key);
     const raw=buildPicks(league,event,odds,Date.now());
     const candidates=await enrichPhotos(league,event,raw);
@@ -71,12 +75,13 @@ async function refreshUpcoming({db,getJSON,key,now=Date.now(),limit=8,enrichPhot
      try{await db.collection('players').doc(pick.id).create(pick.data);created++;}
      catch(error){if(error.code!==6&&error.code!=='already-exists')throw error;}
     }
-    const hasPlayers=candidates.some(x=>x.data.kind!=='team'),hasTeams=candidates.some(x=>x.data.kind==='team');
-    await state.set({lastAttempt:now,created,complete:hasPlayers&&hasTeams,retryAfter:now+6*3600000},{merge:true});
+    const hasPlayers=candidates.some(x=>x.data.kind!=='team'),hasTeams=expandMarkets||candidates.some(x=>x.data.kind==='team');
+    const coverage=league==='NFL'?{tdCoverage:[...new Set([...(previous.tdCoverage||[]),...tdMarkets.filter(k=>candidates.some(p=>p.data.stat===markets.NFL[k]))])],tdRetryAfter:now+6*3600000}:{};
+    await state.set({lastAttempt:now,created,complete:expandMarkets?true:hasPlayers&&hasTeams,marketVersion,retryAfter:now+6*3600000,...coverage},{merge:true});
     report[league].created+=created;report[league].events++;
    }catch{
     report[league].errors++;
-    await state.set({lastAttempt:now,complete:false,retryAfter:now+6*3600000},{merge:true});
+    await state.set({lastAttempt:now,complete:previous.complete===true,marketVersion,tdCoverage:previous.tdCoverage||[],tdRetryAfter:now+6*3600000,retryAfter:now+6*3600000},{merge:true});
    }
   }
  }

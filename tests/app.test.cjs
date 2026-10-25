@@ -41,3 +41,12 @@ test('existing payout behavior: pushes, team multipliers, protection and promo b
  assert.equal(a.run(`evalEntry({type:'props',amt:10,mode:'power',pay:{p2:3},prot:true,picks:[{pid:'a',line:25,dir:'less'},{pid:'b',line:25,dir:'less'}]}).won`),10);
  assert.equal(a.run(`evalEntry({type:'team',amt:10,picks:[{pid:'t',side:'a',mult:2.5},{pid:'c',side:'a',mult:9}]}).won`),25);
 });
+test('NFL filters omit expired weeks and clear stale saved selections',async()=>{
+ const a=app();await new Promise(r=>setImmediate(r));
+ a.run(`players={old:{game:'NFL',week:6,name:'Old',stat:'Passing TDs',status:'upcoming',commenceTime:new Date(Date.now()-86400000).toISOString()},soon:{game:'NFL',week:7,name:'Z Next',team:'Test',stat:'Passing Yards',line:200,status:'upcoming',commenceTime:new Date(Date.now()+3600000).toISOString()},later:{game:'NFL',week:8,name:'A Later',team:'Test',stat:'Rushing TDs',line:0.5,status:'upcoming',commenceTime:new Date(Date.now()+86400000).toISOString()}};wf='6';sf='Passing TDs';gf='NFL';view='board';bsub='players';render()`);
+ const html=a.nodes.get('main').innerHTML;
+ assert.doesNotMatch(html,/Week 6/);assert.match(html,/Week 7/);assert.match(html,/Week 8/);
+ assert.equal(a.run('wf'),'All');assert.equal(a.run('sf'),'All');
+ const cards=a.nodes.get('cards').innerHTML;
+ assert.ok(cards.indexOf('Z Next')<cards.indexOf('A Later'));
+});
