@@ -18,7 +18,7 @@ function normalize(mapping,box){
 }
 function grade(p,event){
   const m=p.sportsMapping;
-  if(!m||m.provider!=='sportsdataio'||m.gameId!==event.id||p.game!==event.league)return {hold:'unmapped'};
+  if(!m||m.provider!==(event.provider||'sportsdataio')||m.gameId!==event.id||p.game!==event.league)return {hold:'unmapped'};
   if(event.status!=='final'||!event.closed)return {hold:event.status};
   if(!finite(event.homeScore)||!finite(event.awayScore)||event.homeScore<0||event.awayScore<0)return {hold:'missing-score'};
   if(p.kind==='team'){
@@ -37,7 +37,7 @@ function grade(p,event){
   }
   const keys=fields[p.game]?.[p.stat];
   if(!keys)return {hold:'unsupported-stat'};
-  if(!Number.isSafeInteger(m.playerId))return {hold:'missing-player-id'};
+  if(event.provider==='nflverse'?!/^00-\d{7}$/.test(m.playerId):!Number.isSafeInteger(m.playerId))return {hold:'missing-player-id'};
   const rows=event.players.filter(x=>x.PlayerID===m.playerId);
   if(rows.length!==1)return {hold:'missing-or-duplicate-player'};
   const row=rows[0];
@@ -55,6 +55,6 @@ function plan(p,event){
   if(p.settlement?.fingerprint===fingerprint)return {};
   // Existing balances are computed from these records: never silently debit paid winnings.
   if(p.status==='final')return {reviewReason:'stat-correction-or-manual-final',proposedSettlement:result,proposedFingerprint:fingerprint};
-  return {...result,settlement:{provider:'sportsdataio',eventId:event.id,fingerprint,providerUpdated:event.updated}};
+  return {...result,settlement:{provider:event.provider||'sportsdataio',eventId:event.id,fingerprint,providerUpdated:event.updated}};
 }
 module.exports={normalize,grade,plan,digest};

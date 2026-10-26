@@ -6,9 +6,15 @@ const admin=require('firebase-admin');
 admin.initializeApp();
 
 const {normalize,plan,digest}=require('./settlement');
-const key=defineSecret('SPORTSDATAIO_KEY');
+const {createFreeReader,read,compatibleStart}=require('./free-feeds');
+const {prepareNFL,prepareNBA}=require('./free-mappings');
+// Firebase resolves secrets for every discovered export, even when deploying
+// one target. Keep the optional paid export out of keyless deployments.
+const paidDeployment=process.env.DEPLOY_PAID_SPORTS_RESULTS==='true';
+const key=paidDeployment?defineSecret('SPORTSDATAIO_KEY'):null;
 const enabled=defineBoolean('SPORTS_RESULTS_ENABLED',{default:false});
 const realData=defineBoolean('SPORTS_RESULTS_REAL_DATA',{default:false});
+const freeEnabled=defineBoolean('FREE_SPORTS_RESULTS_ENABLED',{default:false});
 async function getBox(mapping){
   if(!['NBA','NFL'].includes(mapping.league)||!Number.isSafeInteger(mapping.providerGameId)||mapping.providerGameId<=0)throw Error('Invalid provider mapping');
   const url=`https://api.sportsdata.io/v3/${mapping.league.toLowerCase()}/stats/json/BoxScore/${mapping.providerGameId}`;
@@ -16,17 +22,16 @@ async function getBox(mapping){
   if(!r.ok)throw Error('Sports provider HTTP '+r.status);
   return normalize(mapping,await r.json());
 }
-exports.syncSportsResults=onSchedule({schedule:'every 1 minutes',region:'us-central1',secrets:[key],timeoutSeconds:540,maxInstances:1,retryCount:0},async()=>{
-  if(!enabled.value()||!realData.value())return;
+async function syncResults(providers,reader){
   const db=admin.firestore();
   // Only administrator-verified mappings are polled. Continue monitoring for corrections
   // until monitorUntil (at least 7 days after final); never infer a provider ID by name.
   const mappings=await db.collection('sportsGames').where('enabled','==',true).get();
   for(const doc of mappings.docs){
     const m=doc.data(),now=Date.now();
-    if(m.provider!=='sportsdataio'||m.verified!==true||!Number.isFinite(m.monitorUntil)||m.monitorUntil<now||!Number.isFinite(m.pollFrom)||m.pollFrom>now)continue;
+    if(!providers.includes(m.provider)||m.verified!==true||!Number.isFinite(m.monitorUntil)||m.monitorUntil<now||!Number.isFinite(m.pollFrom)||m.pollFrom>now)continue;
     try{
-      const event=await getBox(m);
+      const event=await reader(m);
       if(!event.start)throw Error('Confirmed UTC start time is missing');
       const candidates=await db.collection('players').where('sportsMapping.gameKey','==',doc.id).get();
       if(candidates.size>200)throw Error('Too many linked picks for one atomic settlement; administrator review required');
@@ -42,8 +47,11 @@ exports.syncSportsResults=onSchedule({schedule:'every 1 minutes',region:'us-cent
           if(!snap.exists)continue;
           const p=snap.data();
           if(p.game!==m.league||p.sportsMapping?.gameId!==m.providerGameId||p.sportsMapping?.gameKey!==doc.id)continue;
+          if(m.provider!=='sportsdataio'&&!compatibleStart(p.commenceTime,event.start)){
+            tx.update(snap.ref,{reviewReason:'schedule-changed-remap-required',lastSportsSync:now});continue;
+          }
           const patch={eventStatus:event.status,lastSportsSync:now};
-          if(event.start){patch.commenceTime=event.start;patch.lockAtMs=Date.parse(event.start)-600000;}
+          if(event.start&&m.provider==='sportsdataio'){patch.commenceTime=event.start;patch.lockAtMs=Date.parse(event.start)-600000;}
           // Keep accepted lines, multipliers, and slip snapshots unchanged.
           if(event.status==='live'&&p.status!=='final')patch.status='live';
           if(event.status==='scheduled'&&p.status!=='final')patch.status='upcoming';
@@ -67,4 +75,17 @@ exports.syncSportsResults=onSchedule({schedule:'every 1 minutes',region:'us-cent
       await doc.ref.update({lastError:String(error.message).slice(0,200),lastAttempt:now});
     }
   }
+}
+if(paidDeployment)exports.syncSportsResults=onSchedule({schedule:'every 1 minutes',region:'us-central1',secrets:[key],timeoutSeconds:540,maxInstances:1,retryCount:0},async()=>{
+  if(enabled.value()&&realData.value())await syncResults(['sportsdataio'],getBox);
+});
+// Separate deployment target: no subscription key, no secret binding. Mapping
+// failures leave picks untouched, and do not prevent already verified games syncing.
+exports.syncFreeSportsResults=onSchedule({schedule:'every 15 minutes',region:'us-central1',timeoutSeconds:540,maxInstances:1,retryCount:0},async()=>{
+  if(!freeEnabled.value())return;
+  try{console.log('Free NFL mappings',await prepareNFL(admin.firestore(),read));}
+  catch(error){console.error('Free mapping feed unavailable',error.message);}
+  try{console.log('Free NBA mappings',await prepareNBA(admin.firestore(),read));}
+  catch(error){console.error('Free NBA mapping feed unavailable',error.message);}
+  await syncResults(['nflverse','nba'],createFreeReader());
 });
