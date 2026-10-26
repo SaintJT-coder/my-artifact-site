@@ -50,6 +50,10 @@ Both linkers only add `sportsMapping` to pending/live picks with confirmed exist
 
 Read-only verification: `node scripts/probe-free-feeds.cjs 2026`. Initial check verified 7,105 current-season NFL rows and the completed `2026_07_PIT_NO` game (70 player rows). NBA schedule/box/scoreboard URLs returned HTTP 403 from the local environment; cloud access must be checked after deployment. The legacy `player_stats` release path is obsolete for current stats: do not fall back to an older season or old all-season files when the current source fails.
 
+Production verification, October 26: `syncFreeSportsResults` deployed ACTIVE on Node 22 with `FREE_SPORTS_RESULTS_ENABLED=true` and zero secret bindings. Its Cloud Scheduler is ENABLED, every 15 minutes. The first successful run linked 93 NFL picks across 11 exact games, recorded final observations, and held those picks pending the stability check. NBA.com also returned HTTP 403 **from Firebase**, so NBA automatic settlement remains unavailable until upstream access works; the worker retries without settling unverified data. No paid provider was enabled or deployed. All 44 tests and GitHub validation passed.
+
+A second scheduler invocation after the required stability interval confirmed all 11 unchanged final observations and settled all 93 linked NFL picks. Verification read the stored final settlements directly from Firestore; no local preview writes were applied. Unmatched picks remain pending. GitHub Pages and validation workflows both completed successfully for the implementation commit.
+
 ### Paid provider credentials and activation (optional alternative)
 
 1. Obtain a production, unscrambled SportsDataIO subscription covering NBA and NFL live/final box scores and verify representative responses against the adapter. No results key was configured during this change; only `ODDS_API_KEY` existed.
