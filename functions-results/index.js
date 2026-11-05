@@ -48,7 +48,9 @@ async function syncResults(providers,reader){
           const p=snap.data();
           if(p.game!==m.league||p.sportsMapping?.gameId!==m.providerGameId||p.sportsMapping?.gameKey!==doc.id)continue;
           if(m.provider!=='sportsdataio'&&!compatibleStart(p.commenceTime,event.start)){
-            tx.update(snap.ref,{reviewReason:'schedule-changed-remap-required',lastSportsSync:now});continue;
+            if(p.reviewReason!=='schedule-changed-remap-required')
+              tx.update(snap.ref,{reviewReason:'schedule-changed-remap-required',lastSportsSync:now});
+            continue;
           }
           const patch={eventStatus:event.status,lastSportsSync:now};
           if(event.start&&m.provider==='sportsdataio'){patch.commenceTime=event.start;patch.lockAtMs=Date.parse(event.start)-600000;}
@@ -58,8 +60,17 @@ async function syncResults(providers,reader){
           if(event.status==='final')Object.assign(patch,stable?plan(p,event):{reviewReason:'awaiting-stable-final'});
           if(['postponed','suspended','canceled'].includes(event.status))patch.reviewReason=event.status;
           if(patch.settlement)patch.reviewReason=admin.firestore.FieldValue.delete();
+          // Heartbeat-only writes fire every downstream player-update trigger.
+          // Compare semantic fields before adding lastSportsSync; unchanged finals,
+          // live scores and review holds must not fan out notifications again.
+          const changed=Object.entries(patch).some(([key,value])=>
+            key!=='lastSportsSync' && (key==='reviewReason' && patch.settlement
+              ? Object.hasOwn(p,key) : digest(p[key]??null)!==digest(value??null)));
+          if(!changed)continue;
           tx.update(snap.ref,patch);
-          if(patch.settlement||patch.proposedFingerprint){
+          if((patch.settlement||patch.proposedFingerprint)&&
+             (patch.settlement?.fingerprint!==p.settlement?.fingerprint||
+              patch.proposedFingerprint!==p.proposedFingerprint)){
             const fingerprint=patch.settlement?.fingerprint||patch.proposedFingerprint;
             tx.set(db.collection('sportsSettlementAudit').doc(digest([snap.id,fingerprint])),{pickId:snap.id,gameKey:doc.id,observedAt:now,eventHash,decision:patch.settlement?'applied':'review',result:patch.proposedSettlement||{status:patch.status,result:patch.result,current:patch.current}},{merge:true});
           }
