@@ -33,9 +33,17 @@ service cloud.firestore {
     }
     function appendSlip(old) {
       let next = request.resource.data.entries;
-      return request.resource.data.keys().hasOnly(['entries'])
+      let ids = request.resource.data.pickIds;
+      return request.resource.data.keys().hasOnly(['entries', 'pickIds'])
         && next is list && next.size() == old.size() + 1
         && next.removeAll([next[old.size()]]) == old
+        && ids is list && ids.size() <= 1000
+        && next[old.size()].picks[0].pid in ids
+        && (next[old.size()].picks.size() < 2 || next[old.size()].picks[1].pid in ids)
+        && (next[old.size()].picks.size() < 3 || next[old.size()].picks[2].pid in ids)
+        && (next[old.size()].picks.size() < 4 || next[old.size()].picks[3].pid in ids)
+        && (next[old.size()].picks.size() < 5 || next[old.size()].picks[4].pid in ids)
+        && (next[old.size()].picks.size() < 6 || next[old.size()].picks[5].pid in ids)
         && validEntry(next[old.size()]);
     }
 

@@ -697,7 +697,9 @@ document.addEventListener("click",e=>{
         if(free){if(tokensOf(myId,ex)<1)throw new Error("No free entries left.")}
         else if(entry.amt>balFor(ex,(spin.total||0)+(gm.total||0)))throw new Error("Not enough points.");
         if(!free&&promo.prot&&!ex.some(x=>(x.day||myDay(x.ts))===today()))entry.prot=true;
-        tx.set(ref,{entries:[...ex,entry]});
+        const entries=[...ex,entry];
+        const pickIds=[...new Set(entries.flatMap(x=>(x.picks||[]).map(p=>p.pid)).filter(Boolean))];
+        tx.set(ref,{entries,pickIds});
       });
       for(const k of Object.keys(cur))delete cur[k];
       useFree=false;$("sheet").classList.remove("open");view="entries";esub="active";render();

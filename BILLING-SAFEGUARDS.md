@@ -14,6 +14,11 @@ Before restoration:
    Require an early exit for changes unrelated to settlement, bounded queries,
    no whole-database reads per player update, idempotent notification delivery,
    and explicit concurrency/instance/retry limits. Never deploy a stub in its place.
+   The recovered implementation is now in `functions/win-notifications.js` and
+   uses the bounded `slips.pickIds` reverse index. Run
+   `scripts/backfill-slip-pick-ids.cjs` without `--apply` first; inspect its
+   counts, then apply only after billing restoration and before enabling the
+   notification trigger.
 2. Deploy only `syncFreeSportsResults` from its separate existing codebase after
    reconciling the deployed source. Do not deploy the root functions directory
    wholesale: notification and reminder exports are absent from that source.
