@@ -19,6 +19,8 @@ const MAX_EVENTS = 8;
 const PLAYABLE_MARKETS = {player_pass_yds:"Passing Yards",player_rush_yds:"Rushing Yards",player_reception_yds:"Receiving Yards",player_pass_tds:"Passing TDs",player_rush_tds:"Rushing TDs",player_reception_tds:"Receiving TDs"};
 const crypto = require("crypto");
 const hash = s => crypto.createHash("sha256").update(s).digest("hex");
+const {onDocumentUpdated}=require("firebase-functions/v2/firestore");
+const {createWinningSlipNotifier}=require("./win-notifications");
 const priority = k => k === "draftkings" ? 0 : k === "fanduel" ? 1 : 2;
 const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"");
 const weekFromKickoff = iso => {
@@ -316,3 +318,8 @@ async function nbaOddsImport(req,res){
  }catch(e){console.error("NBA odds import failed",e);res.status(502).json({error:"NBA import failed; inspect function logs and API market access"})}
 }
 exports.importNbaOdds=onRequest({region:"us-central1",secrets:[oddsKey],timeoutSeconds:120,maxInstances:1,cors:["https://saintjt-coder.github.io"]},nbaOddsImport);
+
+exports.notifyWinningSlips=onDocumentUpdated({
+ document:"players/{playerId}",region:"us-central1",timeoutSeconds:120,
+ memory:"256MiB",maxInstances:1,concurrency:1,retry:false
+},createWinningSlipNotifier({admin,hash}));

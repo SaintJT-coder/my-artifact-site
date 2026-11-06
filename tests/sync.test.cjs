@@ -5,6 +5,7 @@ const fs=require('node:fs');
 function worker(free=false,paid=true){
  let now=Date.parse('2026-11-01T23:00:00Z'),failure=false;
  const box={Game:{GameID:42,HomeTeam:'BOS',AwayTeam:'NY',HomeTeamScore:100,AwayTeamScore:90,Status:'Final',IsClosed:true,DateTimeUTC:'2026-11-01T20:00:00'},PlayerGames:[{GameID:42,PlayerID:9,Team:'BOS',Games:1,Points:20}]};
+ const playerWrites=[];
  const records=new Map([
   ['sportsGames/g',{provider:'sportsdataio',verified:true,league:'NBA',providerGameId:42,homeTeam:'BOS',awayTeam:'NY',enabled:true,pollFrom:now-86400000,monitorUntil:now+8*86400000}],
   ['players/p',{game:'NBA',status:'upcoming',stat:'Points',line:25,sportsMapping:{gameKey:'g',gameId:42,provider:'sportsdataio',playerId:9,team:'BOS'}}]
@@ -12,7 +13,7 @@ function worker(free=false,paid=true){
  if(free){records.get('sportsGames/g').provider='nba';records.get('players/p').sportsMapping.provider='nba';records.get('players/p').commenceTime='2026-11-01T20:00:00Z';}
  const remove=Symbol('delete');
  function ref(path){return {path,id:path.split('/').pop(),async update(patch){apply(path,patch)}}}
- function apply(path,patch){const data={...records.get(path)};for(const [k,v] of Object.entries(patch)){if(v===remove)delete data[k];else data[k]=v}records.set(path,data)}
+ function apply(path,patch){if(path.startsWith('players/'))playerWrites.push(patch);const data={...records.get(path)};for(const [k,v] of Object.entries(patch)){if(v===remove)delete data[k];else data[k]=v}records.set(path,data)}
  const snap=path=>({exists:records.has(path),id:path.split('/').pop(),ref:ref(path),data:()=>structuredClone(records.get(path))});
  const db={collection(name){return {doc:id=>ref(name+'/'+id),where:()=>({get:async()=>{const docs=[...records.keys()].filter(k=>k.startsWith(name+'/')).map(snap);return {docs,size:docs.length}}})}},async runTransaction(fn){const writes=[];await fn({get:async r=>snap(r.path),update:(r,p)=>writes.push([r.path,p]),set:(r,p)=>writes.push([r.path,p])});for(const [path,patch] of writes)apply(path,patch)}};
  const admin={initializeApp(){},firestore:()=>db};admin.firestore.FieldValue={delete:()=>remove};
@@ -22,7 +23,7 @@ function worker(free=false,paid=true){
  context.process={env:{DEPLOY_PAID_SPORTS_RESULTS:String(paid)}};
  const originalRequire=context.require;context.require=name=>name==='./free-feeds'?{compatibleStart:require('../functions-results/free-feeds').compatibleStart,createFreeReader:()=>async m=>{if(failure)throw Error('provider unavailable');return {...require('../functions-results/settlement').normalize(m,box),provider:'nba'};},read(){}}:name==='./free-mappings'?{prepareNFL:async()=>({linked:0}),prepareNBA:async()=>({linked:0})}:originalRequire(name);
  vm.runInNewContext(fs.readFileSync('functions-results/index.js','utf8'),context);
- return {run:free?exports.syncFreeSportsResults:exports.syncSportsResults,exported:Object.keys(exports),records,box,advance:()=>{now+=180000},fail:()=>{failure=true}};
+ return {run:free?exports.syncFreeSportsResults:exports.syncSportsResults,exported:Object.keys(exports),records,box,playerWrites,advance:()=>{now+=180000},fail:()=>{failure=true}};
 }
 test('worker waits for two stable closed finals, applies once and audits corrections',async()=>{
  const w=worker();await w.run();assert.equal(w.records.get('players/p').status,'upcoming');
@@ -50,4 +51,15 @@ test('free scheduled worker requires stable finals, preserves corrections and su
 });
 test('free-only deployment does not discover a paid function or require a paid secret',()=>{
  assert.deepEqual(worker(true,false).exported,['syncFreeSportsResults']);
+});
+
+test('unchanged final polling produces no player writes or notification fan-out',async()=>{
+ const w=worker(true);await w.run();w.advance();await w.run();
+ const before=w.playerWrites.length;
+ for(let i=0;i<10;i++){w.advance();await w.run();}
+ assert.equal(w.playerWrites.length,before);
+ w.box.PlayerGames[0].Points=22;await w.run();w.advance();await w.run();
+ assert.equal(w.playerWrites.length,before+2);
+ const correction=w.playerWrites.length;
+ w.advance();await w.run();assert.equal(w.playerWrites.length,correction);
 });
